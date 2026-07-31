@@ -1,7 +1,12 @@
 # Ticket 08 — Landing dust, tuning sweep, README
 
-**Depends on:** 07. This is the last ticket. It has an exact item list — implement these
-things and nothing else.
+> **Built. Superseded by v2.** The dust rule here is now **reversed**: this ticket says emit
+> only on big-hop landings and never on gait hops. Big hops no longer exist, and ticket 13
+> makes dust continuous on every gait landing. The README section here is rewritten by
+> ticket 16. Follow tickets 13 and 16, not this file.
+
+**Depends on:** 07. Last ticket of v1. It has an exact item list — implement these things
+and nothing else.
 
 ## 1. Landing dust puffs
 

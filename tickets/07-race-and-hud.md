@@ -1,5 +1,9 @@
 # Ticket 07 — Race state machine and HUD
 
+> **Built. Partly superseded by v2.** The "≈27 s finish time" acceptance criterion is
+> retired — ticket 10 makes pace variable, so there is no fixed expected time. The HUD
+> itself is extended by ticket 15.
+
 **Depends on:** 06.
 
 ## Goal
