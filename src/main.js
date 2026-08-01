@@ -49,6 +49,7 @@ const player = createRacer({
   path,
   controller: createPlayerController(),
   isPlayer: true,
+  dust,
 });
 scene.add(player.group);
 
@@ -84,9 +85,10 @@ renderer.domElement.addEventListener('pointerdown', () => {
 /**
  * Fixed-timestep simulation: race.update() gates racers by state (no advance during
  * READY/COUNTDOWN, idle bob during FINISHED), eases each runner's facing/lean, and drives
- * the camera rig. Dust is independent of race state -- it only ever animates particles
- * emitted elsewhere. v2 has not wired up an emitter yet (v1's big-hop landing is gone;
- * ticket 13 wires continuous gait-landing dust), so the pool sits idle for now.
+ * the camera rig. dust.update() only ever animates particles already emitted elsewhere --
+ * the emitting itself happens inside locomotion.js's onGaitLand/onStumble callbacks (wired
+ * in racer.js), continuously, every gait-hop landing plus a bigger burst on a stumble
+ * (ticket 13).
  */
 function update(dt) {
   race.update(dt);

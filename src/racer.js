@@ -8,15 +8,29 @@
 import { createRunner } from './runner.js';
 import { createLocomotion } from './locomotion.js';
 import { createPlayerController } from './controllers.js';
+import { DUST } from './constants.js';
 
 export function createRacer({
   path,
   controller = createPlayerController(),
   palette,
   isPlayer = false,
+  // Optional: the shared dust pool (see main.js). Continuous gait-landing dust and the
+  // bigger stumble burst are both driven from locomotion's callbacks (ticket 12/13) --
+  // racer.js is just the wiring between them and dust.js, so a racer with no `dust` passed
+  // (e.g. a future AI opponent that doesn't kick up dust) still works.
+  dust,
 } = {}) {
   const runner = createRunner(path, palette);
-  const locomotion = createLocomotion(path, runner);
+  const locomotion = createLocomotion(path, runner, {
+    onGaitLand: (x, y, facing) => dust?.emit(x, y, facing),
+    onStumble: (x, y, facing) =>
+      dust?.emit(x, y, facing, {
+        count: DUST.PER_STUMBLE,
+        speed: DUST.STUMBLE_SPEED,
+        spread: DUST.STUMBLE_SPREAD,
+      }),
+  });
 
   // Read-only state handed to the controller each tick. Reused rather than reallocated --
   // this runs at 120 Hz per racer.
@@ -81,6 +95,10 @@ export function createRacer({
     },
     get slopeSigned() {
       return locomotion.slopeSigned;
+    },
+    // Exposed for ticket 14's camera shake.
+    get isStumbling() {
+      return locomotion.isStumbling;
     },
   };
 }
