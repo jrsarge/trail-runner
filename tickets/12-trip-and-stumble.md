@@ -1,5 +1,13 @@
 # Ticket 12 — Trip, slip, and stumble recovery
 
+> **Built, then RETIRED in v3.** Playtested and rejected as "more annoying than tense": a
+> stumble cheap enough not to feel punishing (~0.4 s) was too cheap to shape play, and one
+> expensive enough to shape play felt bad. Ticket 17 disables it behind `STUMBLE.ENABLED`
+> and re-points the margin from a trip threshold to the stamina drain knee (ticket 18).
+> The code is kept, not deleted. **Do not implement or verify against this file** — its
+> acceptance criteria (stumble cost, no death spiral) are unrunnable with the stumble off.
+> The signed uphill/downhill asymmetry it introduced survives, as a *cost* asymmetry.
+
 **Depends on:** 11. Read DESIGN.md v2 "Uphill and downhill are different" and "Fairness".
 
 ## Goal

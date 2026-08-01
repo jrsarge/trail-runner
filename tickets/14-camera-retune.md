@@ -1,6 +1,15 @@
 # Ticket 14 — Camera retune for the lean mechanic
 
-**Depends on:** 12 (for `onStumble`).
+**Depends on:** 20. (Execution order: 17 → 18 → 19 → 20 → **14** → 15 → 16.)
+
+> **Updated for v3.** Two things changed since this was written. The stumble is retired
+> (ticket 17), so §3's shake must be gated behind `STUMBLE.ENABLED` — build it, but expect
+> it never to fire. And there are now two courses: the pull-back must key off
+> `path.ledgeRanges()` (ticket 19), never a hardcoded index or coordinate.
+>
+> **This ticket is currently blocking playtesting.** `CAMERA.STACK_X/STACK_Y` are still
+> alpine-tuned constants, so on the `summit` course the pull-back triggers correctly but
+> frames an empty region — the new course's climax is unwatchable until §2 lands.
 
 ## Goal
 

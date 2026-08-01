@@ -59,6 +59,61 @@
         font-variant-numeric: tabular-nums;
       }
 
+      /* Stamina meter (ticket 15 §2b) -- the only UI element in the game. A single thin
+         bar, directly under the stat block, no numbers/percentage/segments. Width is set
+         directly from JS every frame with no CSS transition: stamina only ever decreases,
+         and a transitioned width could visually read as refilling on a restart snap-back
+         (DESIGN.md "The core loop" -- "backing off does not recover it"). */
+      .hud-stamina {
+        position: relative;
+        margin-top: 8px;
+        width: 100%;
+        height: 7px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+
+      .hud-stamina-fill {
+        height: 100%;
+        display: flex;
+        justify-content: flex-end; /* pushes the burn band to the depleting (right) edge */
+        background: rgba(255, 255, 255, 0.85);
+      }
+
+      .hud-stamina-fill.warning {
+        background: #ff9a52;
+      }
+
+      /* The burn zone: brighter band at the depleting edge, sized to the stamina that
+         would drain over the next HUD.BURN_LOOKAHEAD seconds at the current rate, eased so
+         it reads as a band rather than jitter. This is the only feedback that effort costs
+         anything once the wobble telegraph is gone -- see DESIGN.md "Telegraphing". */
+      .hud-stamina-burn {
+        height: 100%;
+        background: #ffe066;
+        box-shadow: 0 0 6px rgba(255, 224, 102, 0.8);
+      }
+
+      .hud-tutorial {
+        position: absolute;
+        left: 50%;
+        top: 10%;
+        transform: translateX(-50%);
+        padding: 6px 16px;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 999px;
+        font-size: 1em;
+        text-align: center;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .hud-tutorial.visible {
+        opacity: 1;
+      }
+
       .hud-ready {
         position: absolute;
         left: 50%;
@@ -111,6 +166,29 @@
         font-size: 3em;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
+      }
+
+      .hud-finish-newbest {
+        display: none;
+        font-size: 0.95em;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: #ffe066;
+      }
+
+      .hud-finish-delta {
+        display: none;
+        font-size: 1.2em;
+        font-variant-numeric: tabular-nums;
+        opacity: 0.9;
+      }
+
+      .hud-finish-delta.good {
+        color: #6bffa0;
+      }
+
+      .hud-finish-delta.bad {
+        color: #ff8a7a;
       }
 
       .hud-finish-stats {

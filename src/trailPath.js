@@ -142,12 +142,13 @@ function buildCumulative(points) {
 }
 
 class TrailPath {
-  constructor(points, cumulative, segmentStartArcLengths, segmentTechnical) {
+  constructor(points, cumulative, segmentStartArcLengths, segmentTechnical, segmentLedge) {
     this.points = points;
     this.cumulative = cumulative;
     this.length = cumulative[cumulative.length - 1];
     this._segmentStartArcLengths = segmentStartArcLengths;
     this._segmentTechnical = segmentTechnical;
+    this._segmentLedge = segmentLedge;
   }
 
   // Binary search for the largest index i such that cumulative[i] <= s, clamped so that
@@ -246,6 +247,46 @@ class TrailPath {
 
     return tech[i];
   }
+
+  // Contiguous runs of `ledge: true` segments, as arc-length ranges. Replaces the old
+  // `course.firstLegIndex` hardcode (ticket 19 §2): world.js banks the ground bed over
+  // these ranges, cameraRig.js pulls the camera back approaching one. A course with no
+  // ledge segments returns an empty array.
+  ledgeRanges() {
+    const ledge = this._segmentLedge;
+    const ranges = [];
+    let i = 0;
+    while (i < ledge.length) {
+      if (!ledge[i]) {
+        i++;
+        continue;
+      }
+      const startS = this._segmentStartArcLengths[i];
+      let j = i;
+      while (j + 1 < ledge.length && ledge[j + 1]) j++;
+      const endS = j + 1 < ledge.length ? this._segmentStartArcLengths[j + 1] : this.length;
+      ranges.push({ startS, endS });
+      i = j + 1;
+    }
+    return ranges;
+  }
+
+  // The path's own point-space bounding box (ticket 19 §3) -- world bounds (floor, sky)
+  // derive from this rather than a fixed global, so a course that dips or summits beyond
+  // alpine's range doesn't run the trail below the floor or off the top of the sky.
+  bounds() {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const p of this.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    return { minX, maxX, minY, maxY };
+  }
 }
 
 export function buildPath(segments = DEFAULT_COURSE.segments, start = DEFAULT_COURSE.start) {
@@ -270,6 +311,13 @@ export function buildPath(segments = DEFAULT_COURSE.segments, start = DEFAULT_CO
   }
 
   const segmentTechnical = segments.map((seg) => seg.technical ?? 1);
+  const segmentLedge = segments.map((seg) => !!seg.ledge);
 
-  return new TrailPath(outPoints, cumulative, segmentStartArcLengths, segmentTechnical);
+  return new TrailPath(
+    outPoints,
+    cumulative,
+    segmentStartArcLengths,
+    segmentTechnical,
+    segmentLedge
+  );
 }

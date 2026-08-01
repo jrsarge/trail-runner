@@ -6,28 +6,32 @@
 // terrain on the course (~24 deg) while the switchback legs are the gentlest (~10 deg),
 // yet the switchbacks are the dramatic climax. See DESIGN.md "Why `technical` exists".
 // Absent means 1.0.
+//
+// Ticket 19 §4: rebuilt from src/courses/blocks.js instead of a hand-written segment
+// table. This is the ticket's correctness gate -- the block calls below must emit exactly
+// the same segments the old hand table did, so the built path is byte-for-byte identical
+// (length 190.6311, 4 filleted corners). Verified in test/trailPath.test.js and by hand
+// against DESIGN.md's course table.
+
+import { flat, climb, descent, switchbacks } from './blocks.js';
+
+const start = { x: 0, y: 0 };
+const cursor = { x: start.x, y: start.y };
+
+const segments = [
+  ...flat(cursor, { x: 20, y: 0.0 }),
+  ...climb(cursor, { x: 60, y: 12.0, samples: 24 }),
+  ...descent(cursor, { x: 95, y: 4.0, samples: 20, technical: 1.15 }),
+  ...switchbacks(cursor, { legs: 5, run: 18, rise: 3.2, technical: 1.6 }),
+  ...flat(cursor, { x: 120, y: 20.4 }),
+];
 
 export const alpine = {
   id: 'alpine',
   name: 'Alpine Switchbacks',
 
-  start: { x: 0, y: 0 },
-
-  segments: [
-    { type: 'flat', to: { x: 20, y: 0.0 } },
-    { type: 'smooth', to: { x: 60, y: 12.0 }, samples: 24 },
-    { type: 'smooth', to: { x: 95, y: 4.0 }, samples: 20, technical: 1.15 },
-    { type: 'leg', to: { x: 113, y: 7.2 }, technical: 1.6 },
-    { type: 'leg', to: { x: 95, y: 10.4 }, technical: 1.6 },
-    { type: 'leg', to: { x: 113, y: 13.6 }, technical: 1.6 },
-    { type: 'leg', to: { x: 95, y: 16.8 }, technical: 1.6 },
-    { type: 'leg', to: { x: 113, y: 20.0 }, technical: 1.6 },
-    { type: 'flat', to: { x: 120, y: 20.4 } },
-  ],
-
-  // Index of the first `leg` segment. Camera and ground-bed code need to know where the
-  // switchback stack begins; derive the arc length at runtime, don't hardcode it.
-  firstLegIndex: 3,
+  start,
+  segments,
 
   // Decorative only (ticket 03). Has no geometric relationship to the course.
   backdrop: {

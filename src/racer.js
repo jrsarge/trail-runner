@@ -30,6 +30,9 @@ export function createRacer({
         speed: DUST.STUMBLE_SPEED,
         spread: DUST.STUMBLE_SPREAD,
       }),
+    // Unconsumed for now -- no HUD to flash yet (ticket 15). Wired here so that ticket
+    // stays a HUD-only change.
+    onBonk: () => {},
   });
 
   // Read-only state handed to the controller each tick. Reused rather than reallocated --
@@ -96,9 +99,26 @@ export function createRacer({
     get slopeSigned() {
       return locomotion.slopeSigned;
     },
-    // Exposed for ticket 14's camera shake.
+    // Exposed for ticket 14's camera shake. Moot while STUMBLE.ENABLED is false.
     get isStumbling() {
       return locomotion.isStumbling;
+    },
+    // Exposed for the HUD (ticket 15) and for balance tuning (ticket 16); not consumed
+    // anywhere in tickets 17/18 themselves.
+    get stamina() {
+      return locomotion.stamina;
+    },
+    get staminaFraction() {
+      return locomotion.staminaFraction;
+    },
+    get isBonked() {
+      return locomotion.isBonked;
+    },
+    get commit() {
+      return locomotion.commit;
+    },
+    get effort() {
+      return locomotion.effort;
     },
   };
 }

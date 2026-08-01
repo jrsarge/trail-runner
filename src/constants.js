@@ -22,19 +22,27 @@ export const COLORS = {
 };
 
 export const CAMERA = {
-  HALF_HEIGHT: 9,
-  LOOKAHEAD: 4.0,
+  HALF_HEIGHT: 7.0, // was 9 -- lean needs a readable character (ticket 14)
+  // v3 (ticket 14): lookahead scales with speed rather than being a flat constant, since
+  // pace now varies from a bonked crawl to a full sprint -- see cameraRig.js.
+  LOOKAHEAD_BASE: 3.0,
   LOOKAHEAD_Y: 1.2,
   FOLLOW_LAMBDA: 6.0,
   HOP_DAMP: 0.35,
-  // STACK frame must contain y ∈ [4, 25.4] (stack base → top of finish banner)
-  // and x ∈ [95, 120.2]. See ticket 06 before changing these.
-  STACK_X: 107,
-  STACK_Y: 14.8,
-  STACK_HALF_HEIGHT: 11.8,
+  // v3 (ticket 14): STACK is a moderate pull-back that still follows the runner -- only
+  // the zoom changes, driven by path.ledgeRanges() (ticket 19) rather than a hardcoded
+  // segment/coordinate, so it works for any course. The old static STACK_X/STACK_Y/
+  // STACK_MIN_WIDTH containment constants (tuned to alpine's switchback stack geometry)
+  // are gone -- they cannot work for a second course with a stack at different coordinates
+  // (see DESIGN.md "Camera").
+  STACK_HALF_HEIGHT: 10.5, // moderate pull-back; still follows the runner
   STACK_LEAD: 6,
   STACK_BLEND: 1.2,
-  STACK_MIN_WIDTH: 34,
+  // Stumble shake (ticket 14 §3). Gated behind STUMBLE.ENABLED in cameraRig.js -- retired
+  // along with the stumble (STUMBLE.ENABLED = false), kept working for the restore path.
+  SHAKE_AMP: 0.35,
+  SHAKE_DECAY: 0.18,
+  SHAKE_FREQ: 22,
 };
 
 export const PATH = {
@@ -62,20 +70,26 @@ export const Z = {
 };
 
 export const WORLD = {
-  // FLOOR_Y must sit below the lowest the camera can ever see. The FOLLOW shot at the
-  // start line centers on y = 1.2 with halfHeight 9, so its bottom edge is y = -7.8;
-  // a floor at -6 leaves sky showing under the ground. -12 gives margin.
-  FLOOR_Y: -12,
+  // Ticket 19 §3: the floor and sky are derived from the *built path's* own point range
+  // (see TrailPath#bounds in trailPath.js and world.js), not a fixed global -- a course
+  // that dips or summits beyond alpine's range must not run the trail below the floor or
+  // off the top of the sky (the exact bug ticket 03 already fixed once, for alpine, with a
+  // hardcoded FLOOR_Y).
+  //
+  // FLOOR_MARGIN must exceed the camera's worst-case view below the lowest course point.
+  // STACK is the wider shot (ticket 14), so it's the binding case: CAMERA.STACK_HALF_HEIGHT
+  // + CAMERA.LOOKAHEAD_Y (10.5 + 1.2 = 11.7), or sky shows under the ground at the low
+  // point. 12 reproduces alpine's old floorY (-12, since alpine's own
+  // minY is 0) exactly, so this is behavior-neutral for alpine.
+  FLOOR_MARGIN: 12,
   BED_THICKNESS: 2.2,
   BED_BLEND: 3.0,
   TRAIL_WIDTH: 0.36,
   APRON: 20,
-  // Full-screen background quad; deliberately oversized so it never runs out at the
-  // edges of the camera's frustum across the whole course + resize range.
-  SKY_X0: -150,
-  SKY_X1: 400,
-  SKY_Y0: -40,
-  SKY_Y1: 80,
+  // Full-screen background quad; deliberately oversized so it never runs out at the edges
+  // of the camera's frustum across the whole course + resize range. The quad is one
+  // untextured mesh and costs nothing, so this can be generous.
+  SKY_MARGIN: 150,
 };
 
 // Start/finish post + finish banner geometry (ticket 03). Not course geometry — these are
@@ -114,12 +128,25 @@ export const RUNNER = {
   FLIP_TIME: 0.15,
 };
 
+// v3 (ticket 17): speed and cost no longer share a denominator. REF_DEG is a fixed speed
+// reference -- NEVER scale it by `technical` or by any grace multiplier, or technical
+// terrain becomes a speed bonus (the exact trap DESIGN.md "Speed must NOT use the same
+// denominator" warns about). REF_DEG was originally set equal to MARGIN.BASE_DEG (14) so
+// ticket 17's split was behaviour-neutral on flat, non-technical ground at the time. Ticket
+// 21 §2 has since widened MARGIN.BASE_DEG to 20 without moving REF_DEG (not ticket 21's
+// dial to tune) -- the two are no longer equal, and commit and effort now diverge even on
+// flat ground. That's fine (they're deliberately separate ratios, see above); just don't
+// assume the old equality still holds when reading this constant.
 export const SPEED = {
   BASE: 7.0,
   GRADE_DRAG: 0.5,
   MIN_FACTOR: 0.8,
   MAX_FACTOR: 1.2,
   COMMIT_BONUS: 0.35,
+  REF_DEG: 14,
+  SPRINT_GAIN: 0.8,
+  SPRINT_FALLOFF: 1.0,
+  MAX: 11.5, // hard cap; an uncapped sprint is unreadable
 };
 
 // Player lean, in degrees, signed in the travel frame (+ = forward). See DESIGN.md "The
@@ -135,8 +162,28 @@ export const LEAN = {
 };
 
 // Trip/slip margin, in degrees, around idealLean. See DESIGN.md "Fairness" and ticket 12.
+//
+// v3 (ticket 21 §2): BASE_DEG widened 14 -> 20. At 14, the tank ticket 21 needs (big enough
+// to afford ~60 s of max-lean running) put sustainable effort at 1.68 -- permanently past
+// the knee, so the wobble (which reads off `effort`, see locomotion.js) would be pinned on
+// for the entire race and stop telegraphing anything. At 20, sustainable effort lands at
+// 1.13, just barely past the knee -- but ticket 21's own verification found this does NOT
+// make the wobble itself read as "barely perceptible": WOBBLE's onset->full ramp is
+// normalized over effort in [ONSET, 1.0] (see WOBBLE below), so it saturates to full
+// amplitude AT the knee and stays there for any effort past it, whether 1.01 or 4.0. A
+// sustained-effort race (1.13) and an all-out one both spend the overwhelming majority of
+// their distance at full wobble amplitude, near-indistinguishable from each other on that
+// axis. Widening the margin is still correct and load-bearing -- it's what makes
+// BUDGET_MULT land the tank where the tank-size lever actually works (see the reward table
+// in tickets/21-hard-effort.md) -- it just doesn't also restore wobble as a sustained-vs-
+// overcooked telegraph. That would need WOBBLE's own shape changed (e.g. normalizing over a
+// wider effort range than [ONSET, 1.0]), which is not this ticket's dial -- see DESIGN.md
+// "Telegraphing" and ticket 16.
+// This is coupled to STAMINA.BUDGET_MULT below -- widening the margin lowers `effort` at a
+// given lean, which lowers drain, which changes how long the tank lasts; the two were tuned
+// together, in this order (margin first, then tank), not independently.
 export const MARGIN = {
-  BASE_DEG: 14,
+  BASE_DEG: 20,
   SLOPE_NARROW: 0.25, // margin narrows as grade steepens
   MIN_DEG: 6,
   SLIP_ONSET_DEG: 8, // descents steeper than this get a backward slip threshold
@@ -145,7 +192,14 @@ export const MARGIN = {
 
 // Stumble state machine: trip/slip -> pitch -> recover -> grace. See DESIGN.md
 // "Stumbling" and ticket 12.
+//
+// v3 (ticket 17): playtested and rejected as "more annoying than tense" -- replaced by
+// stamina. RETIRED, NOT DELETED: ENABLED gates the trip check, the slip check, the whole
+// pitch/recover state machine, the input lock, and the stumble dust burst in locomotion.js.
+// Flip it back to true to restore v2 behavior if stamina proves thin. Every other value
+// below is untouched v2 tuning, kept so the restore is a one-line change.
 export const STUMBLE = {
+  ENABLED: false,
   TRIGGER_TIME: 0.12, // dwell past the margin before it counts as a trip/slip
   PITCH_TIME: 0.35,
   RECOVER_TIME: 0.45,
@@ -156,18 +210,61 @@ export const STUMBLE = {
   GRACE_MARGIN_MULT: 2.0,
 };
 
-// Widens the trip/slip margin while idealLean is changing fast (the switchback folds, where
-// the grade reverses outright) so a sharp terrain transition never reads as a cheap trip.
-// See DESIGN.md "Fairness" and ticket 12.
+// Widened the trip/slip margin while idealLean was changing fast (the switchback folds,
+// where the grade reverses outright) so a sharp terrain transition never read as a cheap
+// trip. See DESIGN.md "Fairness" and ticket 12.
+//
+// v3 (ticket 17 §5): RETIRED along with the stumble it protected. With no trips, this grace
+// would only make the folds briefly cheaper and faster -- a perk exactly where the game
+// should be hardest. Its application is removed from locomotion.js; the constants stay here,
+// unused, beside the disabled stumble.
 export const TRANSITION = {
   SPIKE_DEG_PER_S: 60,
   GRACE_TIME: 0.5,
   GRACE_MARGIN_MULT: 1.8,
 };
 
+// Stamina: the v3 mechanic. One tank for the whole course, spent by leaning, never refilled.
+// See DESIGN.md "Effort and cost", "Terrain: where you spend", "Calibration", "Running out",
+// and tickets 18/21.
+//
+// v3 (ticket 21 §1): the fixed MAX is gone. A single number cannot serve both a 191 m and an
+// 826 m course, so the tank is derived per course at build time instead: integrate the drain
+// an ideal-lean runner (balance = 0, effort = 0, so just the floor term) would burn over the
+// whole path -- see `computeStaminaMax` in locomotion.js -- and scale that baseline by
+// BUDGET_MULT. Measured baselines: summit ~365 (tank ~980, ~61 s of max-lean running),
+// alpine ~84 (tank ~225). Any future course scales for free.
+export const STAMINA = {
+  BUDGET_MULT: 2.7, // tank = BUDGET_MULT * the ideal-lean baseline spend integrated per course
+  FLOOR: 2.4, // per second, always, even leaning back
+  PUSH: 3.2, // per second per unit of effort, under the knee
+  REDLINE: 6.0, // per second per (effort - 1)^2, above the knee -- squared, do not linearise
+  CLIMB_COST: 1.5,
+  DESCENT_RELIEF: 1.2,
+  DESCENT_MIN: 0.45,
+  BRAKE_COST: 2.0,
+  EXHAUSTED_MULT: 0.8, // speed multiplier once empty (commit is also capped at 0)
+  TIRED_FRACTION: 0.35,
+  TIRED_APEX_MULT: 0.6,
+  // Not specified numerically by ticket 18's constants block beyond TIRED_APEX_MULT; the
+  // ticket asks for "a small forward slump" as part of the posture/gait tell, so this adds
+  // the degree value that drives it (rule 1: tuning numbers live here, not inlined).
+  TIRED_SLUMP_MAX_DEG: 5,
+};
+
 // Telegraphs the approaching edge in the runner's pose before it's crossed -- no UI meter,
 // the character is the readout. See DESIGN.md "Telegraphing" and ticket 13.
-export const WOBBLE = { ONSET: 0.55, MAX_DEG: 3.5, FREQ_HZ: 14 };
+// Wobble telegraph, read off `effort` (ticket 17 §4).
+//
+// FULL_EFFORT exists because the ramp used to normalize over effort in [ONSET, 1.0], which
+// saturated the wobble AT the knee and pinned it there for any effort past it. Ticket 21
+// deliberately puts *sustainable* effort at 1.13 -- just past the knee -- so a sustained
+// race and an all-out one both sat at full amplitude for ~99% of the distance and the
+// telegraph conveyed nothing. Widening MARGIN.BASE_DEG cannot fix that; the ramp's range is
+// the culprit. Normalizing over [ONSET, FULL_EFFORT] instead spreads it across the range
+// actually played: sustainable (1.13) reads ~0.7 deg -- just perceptible -- and all-out
+// (~1.8-2.25 depending on grade) reads 2.4-3.5 deg -- unmistakable.
+export const WOBBLE = { ONSET: 0.55, FULL_EFFORT: 2.2, MAX_DEG: 3.5, FREQ_HZ: 14 };
 
 export const HOP = {
   GAIT_DIST: 1.6,
@@ -204,6 +301,24 @@ export const DUST = {
   STUMBLE_SPEED: 3.4, // backward kick speed (stumble burst) -- faster
   STUMBLE_SPREAD: 1.1, // random velocity jitter (stumble burst) -- wider
 };
+
+// HUD (ticket 15): the lean tutorial on the flat start, the stamina bar's burn-rate zone,
+// pace smoothing, and the localStorage keys for best times / the tutorial-taught flag. See
+// DESIGN.md "Telegraphing" (the burn zone replaces the wobble's soon-to-be-retired job of
+// saying "this is costing you") and tickets/15-best-times-and-hud.md.
+export const TUTORIAL = { DISTANCE: 18, SATISFIED_TIME: 0.6 };
+// The burn zone's lookahead is a fraction of the course's own expected duration, NOT a
+// fixed number of seconds. A fixed 5 s was measured at 44-48% of the bar at max lean on
+// alpine but only 7% on summit, whose tank is ~4.4x larger -- the same effort read as
+// alarming on one course and nearly invisible on the other. Scaling by
+// (path.length / SPEED.BASE) makes the band mean "the next ~19% of the race" on any course,
+// which is what keeps it legible. 0.19 reproduces alpine's original ~5 s exactly.
+export const HUD = {
+  BURN_LOOKAHEAD_FRACTION: 0.19,
+  BURN_EASE_TIME: 0.2,
+  PACE_SMOOTH_TIME: 0.2,
+};
+export const STORAGE = { BEST_PREFIX: 'trailhop.best.', TAUGHT: 'trailhop.taught' };
 
 // Switchback mid-leg clearance (DESIGN.md constraint 1): the gait hop's apex, on top of
 // the runner's full height, must stay under the 3.2 m leg spacing or the runner's head

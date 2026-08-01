@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FIXED_DT, MAX_FRAME_DT, COLORS } from './constants.js';
 import { buildPath } from './trailPath.js';
-import { DEFAULT_COURSE } from './courses/index.js';
+import { COURSES, DEFAULT_COURSE } from './courses/index.js';
 import { buildWorld } from './world.js';
 import { createRacer } from './racer.js';
 import { createPlayerController } from './controllers.js';
@@ -35,7 +35,10 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const course = DEFAULT_COURSE;
+// Ticket 20: `?course=alpine` (or any other registered id) selects a course for A/B
+// testing pacing; an unknown or missing id falls back to the default (summit).
+const requestedCourseId = new URLSearchParams(window.location.search).get('course');
+const course = COURSES[requestedCourseId] ?? DEFAULT_COURSE;
 const path = buildPath(course.segments, course.start);
 const world = buildWorld(path, course);
 scene.add(world.group);
@@ -62,6 +65,7 @@ const hud = createHud(document.getElementById('hud'), {
   race,
   racer: player,
   path,
+  course,
   onRestart: () => race.requestRestart(),
 });
 
@@ -111,7 +115,7 @@ function frame(now) {
     acc -= FIXED_DT;
   }
   world.updateParallax(camera.position.x);
-  hud.update();
+  hud.update(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

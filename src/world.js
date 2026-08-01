@@ -51,23 +51,28 @@ function buildVariableBottomStrip(topBottomPairs, colorHex, z) {
   return new THREE.Mesh(geometry, material);
 }
 
-function buildGroundBed(path, course) {
-  const sStack = path.segmentStartS(course.firstLegIndex);
+function buildGroundBed(path, floorY) {
+  // Ticket 19 §2: banks over the first ledge range's arc length rather than
+  // `course.firstLegIndex`. Both shipped courses have exactly one ledge range, positioned
+  // at (or just before) the finish, so this one-way blend-in -- never un-banking once
+  // entered -- reproduces the exact pre-ticket-19 behavior for alpine.
+  const ranges = path.ledgeRanges();
+  const sStack = ranges.length > 0 ? ranges[0].startS : Infinity;
   const pairs = path.points.map((p, i) => {
     const s = path.cumulative[i];
     const t = smoothstep01((s - (sStack - WORLD.BED_BLEND)) / WORLD.BED_BLEND);
-    const bottomY = lerp(WORLD.FLOOR_Y, p.y - WORLD.BED_THICKNESS, t);
+    const bottomY = lerp(floorY, p.y - WORLD.BED_THICKNESS, t);
     return [{ x: p.x, y: p.y }, { x: p.x, y: bottomY }];
   });
 
-  // Apron: extend the ground (not the trail ribbon) flat and down to FLOOR_Y past both
+  // Apron: extend the ground (not the trail ribbon) flat and down to floorY past both
   // ends, so the bed never stops in mid-air at the start/finish. The path starts well
-  // before the switchback blend, so the first pair's bottom is already FLOOR_Y; the last
-  // pair (on the stack) has a shallower ledge bottom, so the apron tapers it to FLOOR_Y.
+  // before the switchback blend, so the first pair's bottom is already floorY; the last
+  // pair (on the stack) has a shallower ledge bottom, so the apron tapers it to floorY.
   const first = path.points[0];
   const last = path.points[path.points.length - 1];
-  const startApron = [{ x: first.x - WORLD.APRON, y: first.y }, { x: first.x - WORLD.APRON, y: WORLD.FLOOR_Y }];
-  const endApron = [{ x: last.x + WORLD.APRON, y: last.y }, { x: last.x + WORLD.APRON, y: WORLD.FLOOR_Y }];
+  const startApron = [{ x: first.x - WORLD.APRON, y: first.y }, { x: first.x - WORLD.APRON, y: floorY }];
+  const endApron = [{ x: last.x + WORLD.APRON, y: last.y }, { x: last.x + WORLD.APRON, y: floorY }];
 
   return buildVariableBottomStrip([startApron, ...pairs, endApron], COLORS.GROUND, Z.BED);
 }
@@ -104,11 +109,7 @@ function buildTrailRibbon(path) {
   return buildVariableBottomStrip(pairs, COLORS.TRAIL, Z.TRAIL);
 }
 
-function buildSky() {
-  const x0 = WORLD.SKY_X0;
-  const x1 = WORLD.SKY_X1;
-  const y0 = WORLD.SKY_Y0;
-  const y1 = WORLD.SKY_Y1;
+function buildSky(x0, x1, y0, y1) {
   const z = Z.SKY;
 
   const positions = [x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z];
@@ -265,8 +266,17 @@ function buildMarkers(path) {
 export function buildWorld(path, course = DEFAULT_COURSE) {
   const group = new THREE.Group();
 
-  const sky = buildSky();
-  const groundBed = buildGroundBed(path, course);
+  // Ticket 19 §3: derive floor/sky from the course's own built-path bounds, not a fixed
+  // global -- see WORLD.FLOOR_MARGIN / WORLD.SKY_MARGIN in constants.js.
+  const bounds = path.bounds();
+  const floorY = bounds.minY - WORLD.FLOOR_MARGIN;
+  const skyX0 = bounds.minX - WORLD.SKY_MARGIN;
+  const skyX1 = bounds.maxX + WORLD.SKY_MARGIN;
+  const skyY0 = bounds.minY - WORLD.SKY_MARGIN;
+  const skyY1 = bounds.maxY + WORLD.SKY_MARGIN;
+
+  const sky = buildSky(skyX0, skyX1, skyY0, skyY1);
+  const groundBed = buildGroundBed(path, floorY);
   const trailRibbon = buildTrailRibbon(path);
   const { ridgeFar, ridgeNear, mountain } = buildBackdrop(course.backdrop);
   const markers = buildMarkers(path);

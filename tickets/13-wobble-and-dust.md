@@ -1,5 +1,11 @@
 # Ticket 13 — Wobble telegraph and continuous dust
 
+> **Built. Partly superseded by v3.** The wobble and the continuous gait dust both survive —
+> but the wobble's *meaning* changes from "you are about to fall" to "this is costing you",
+> and it is driven by `effort` (the stamina knee) rather than a trip threshold; see ticket
+> 17. The stumble dust burst is disabled along with the stumble. The `** 1.5` curve, the
+> onset, and the 40-mesh pool are all unchanged.
+
 **Depends on:** 12.
 
 ## Goal

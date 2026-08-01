@@ -1,10 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPath } from '../src/trailPath.js';
-import { DEFAULT_COURSE } from '../src/courses/index.js';
+import { alpine } from '../src/courses/alpine.js';
 
-const COURSE = DEFAULT_COURSE.segments;
-const FIRST_LEG_INDEX = DEFAULT_COURSE.firstLegIndex;
+// These tests exercise the alpine course's known geometry (golden path length, exact
+// switchback corners) specifically -- they import `alpine` directly and pass its
+// segments/start into buildPath() explicitly, rather than relying on buildPath()'s
+// DEFAULT_COURSE-based defaults, so they keep testing alpine even after ticket 20 points
+// `DEFAULT_COURSE` at the (much longer) summit course.
+const COURSE = alpine.segments;
+// Index of the first `leg` segment in alpine.segments (see src/courses/alpine.js) --
+// ticket 19 deletes the old `course.firstLegIndex` field in favor of
+// `path.ledgeRanges()`, but alpine's own segment table is fixed and this test is about
+// alpine specifically, so the index is just hardcoded here.
+const FIRST_LEG_INDEX = 3;
 
 test('1. hand-built 2-point straight path reports known length', () => {
   const path = buildPath([{ type: 'flat', to: { x: 10, y: 0 } }], { x: 0, y: 0 });
@@ -29,7 +38,7 @@ test('2. pointAt clamps at and beyond the ends', () => {
 });
 
 test('3. arc-length correctness: pointAt(s) to pointAt(s+0.05) is close to 0.05 everywhere', () => {
-  const path = buildPath();
+  const path = buildPath(alpine.segments, alpine.start);
   const step = 0.05;
   const numSamples = 200;
   const maxS = path.length - step;
@@ -47,7 +56,7 @@ test('3. arc-length correctness: pointAt(s) to pointAt(s+0.05) is close to 0.05 
 });
 
 test('4. tangentAt on the flat start is (1,0); all tangents are unit length', () => {
-  const path = buildPath();
+  const path = buildPath(alpine.segments, alpine.start);
   const t0 = path.tangentAt(1);
   assert.ok(Math.abs(t0.x - 1) < 1e-6 && Math.abs(t0.y - 0) < 1e-6);
 
@@ -61,7 +70,7 @@ test('4. tangentAt on the flat start is (1,0); all tangents are unit length', ()
 });
 
 test('5. at a switchback: tangent.x flips sign across the fillet, pointAt stays C0 continuous', () => {
-  const path = buildPath();
+  const path = buildPath(alpine.segments, alpine.start);
   // Segment FIRST_LEG_INDEX + 1 is the leg to (95, 10.4) -- a switchback reversal.
   // Sample a window straddling the corner where that leg begins.
   const cornerS = path.segmentStartS(FIRST_LEG_INDEX + 1);
@@ -88,7 +97,7 @@ test('5. at a switchback: tangent.x flips sign across the fillet, pointAt stays 
 });
 
 test('6. filleting strictly shortens the path', () => {
-  const filletedPath = buildPath();
+  const filletedPath = buildPath(alpine.segments, alpine.start);
 
   // Build the same course through an unfilleted path by using a turn threshold that
   // nothing can exceed (effectively disables filleting) via a private re-import trick:
@@ -129,7 +138,7 @@ test('6. filleting strictly shortens the path', () => {
 });
 
 test('7. the real COURSE builds without throwing, length is between 188 and 194', () => {
-  const path = buildPath();
+  const path = buildPath(alpine.segments, alpine.start);
   assert.ok(path.length > 188 && path.length < 194, `length was ${path.length}`);
 });
 
