@@ -1,11 +1,15 @@
 // Pure math: turns a course segment table into a filleted polyline with arc-length
 // parameterization. No three.js imports here (see ticket 02 / DESIGN.md).
 
-import { COURSE, COURSE_START } from './course.js';
+import { DEFAULT_COURSE } from './courses/index.js';
 import { PATH } from './constants.js';
 
 function smoothstep(t) {
   return t * t * (3 - 2 * t);
+}
+
+function smoothstep01(x) {
+  return smoothstep(Math.max(0, Math.min(1, x)));
 }
 
 function dist(a, b) {
@@ -138,11 +142,12 @@ function buildCumulative(points) {
 }
 
 class TrailPath {
-  constructor(points, cumulative, segmentStartArcLengths) {
+  constructor(points, cumulative, segmentStartArcLengths, segmentTechnical) {
     this.points = points;
     this.cumulative = cumulative;
     this.length = cumulative[cumulative.length - 1];
     this._segmentStartArcLengths = segmentStartArcLengths;
+    this._segmentTechnical = segmentTechnical;
   }
 
   // Binary search for the largest index i such that cumulative[i] <= s, clamped so that
@@ -194,9 +199,56 @@ class TrailPath {
     if (index <= 0) return 0;
     return this._segmentStartArcLengths[index];
   }
+
+  // Largest segment index whose start arc length is <= s.
+  _segmentIndexAt(s) {
+    const starts = this._segmentStartArcLengths;
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= s) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  // Per-segment terrain difficulty (ticket 09 data, consumed by ticket 12's trip margin).
+  //
+  // Blended across segment joins over PATH.TECHNICAL_BLEND rather than stepping. A hard
+  // step would make the trip margin snap at a boundary -- exactly the unreadable, "that
+  // felt cheap" trip DESIGN.md "Fairness" is about. The blend is centred on the join, so
+  // difficulty ramps in over the last half-window of one segment and the first half-window
+  // of the next.
+  technicalAt(s) {
+    const tech = this._segmentTechnical;
+    if (!tech || tech.length === 0) return 1;
+
+    const clamped = Math.max(0, Math.min(this.length, s));
+    const i = this._segmentIndexAt(clamped);
+    const half = PATH.TECHNICAL_BLEND / 2;
+
+    // Near the join with the previous segment.
+    const start = this._segmentStartArcLengths[i];
+    if (i > 0 && clamped < start + half) {
+      const t = smoothstep01((clamped - (start - half)) / PATH.TECHNICAL_BLEND);
+      return tech[i - 1] + (tech[i] - tech[i - 1]) * t;
+    }
+
+    // Near the join with the next segment.
+    if (i + 1 < tech.length) {
+      const nextStart = this._segmentStartArcLengths[i + 1];
+      if (clamped > nextStart - half) {
+        const t = smoothstep01((clamped - (nextStart - half)) / PATH.TECHNICAL_BLEND);
+        return tech[i] + (tech[i + 1] - tech[i]) * t;
+      }
+    }
+
+    return tech[i];
+  }
 }
 
-export function buildPath(segments = COURSE, start = COURSE_START) {
+export function buildPath(segments = DEFAULT_COURSE.segments, start = DEFAULT_COURSE.start) {
   const { points: rawPoints, segmentEndIndex } = resolveVertices(segments, start);
 
   const { outPoints, rawIndexToOutIndex } = filletPolyline(
@@ -217,5 +269,7 @@ export function buildPath(segments = COURSE, start = COURSE_START) {
     segmentStartArcLengths.push(cumulative[outIdx]);
   }
 
-  return new TrailPath(outPoints, cumulative, segmentStartArcLengths);
+  const segmentTechnical = segments.map((seg) => seg.technical ?? 1);
+
+  return new TrailPath(outPoints, cumulative, segmentStartArcLengths, segmentTechnical);
 }

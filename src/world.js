@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { COLORS, Z, WORLD, MARKERS } from './constants.js';
-import { BACKDROP, FIRST_LEG_INDEX } from './course.js';
+import { DEFAULT_COURSE } from './courses/index.js';
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -51,8 +51,8 @@ function buildVariableBottomStrip(topBottomPairs, colorHex, z) {
   return new THREE.Mesh(geometry, material);
 }
 
-function buildGroundBed(path) {
-  const sStack = path.segmentStartS(FIRST_LEG_INDEX);
+function buildGroundBed(path, course) {
+  const sStack = path.segmentStartS(course.firstLegIndex);
   const pairs = path.points.map((p, i) => {
     const s = path.cumulative[i];
     const t = smoothstep01((s - (sStack - WORLD.BED_BLEND)) / WORLD.BED_BLEND);
@@ -150,7 +150,7 @@ function buildRidgePolygon(points, baseY, colorHex, z) {
   return new THREE.Mesh(geometry, material);
 }
 
-function buildBackdrop() {
+function buildBackdrop(BACKDROP) {
   const ridgeFar = buildRidgePolygon(
     BACKDROP.ridgeFar.points,
     BACKDROP.ridgeFar.baseY,
@@ -262,20 +262,20 @@ function buildMarkers(path) {
   return group;
 }
 
-export function buildWorld(path) {
+export function buildWorld(path, course = DEFAULT_COURSE) {
   const group = new THREE.Group();
 
   const sky = buildSky();
-  const groundBed = buildGroundBed(path);
+  const groundBed = buildGroundBed(path, course);
   const trailRibbon = buildTrailRibbon(path);
-  const { ridgeFar, ridgeNear, mountain } = buildBackdrop();
+  const { ridgeFar, ridgeNear, mountain } = buildBackdrop(course.backdrop);
   const markers = buildMarkers(path);
 
   group.add(sky, ridgeFar, ridgeNear, mountain, groundBed, trailRibbon, markers);
 
   function updateParallax(camX) {
-    ridgeFar.position.x = camX * (1 - BACKDROP.ridgeFar.parallax);
-    ridgeNear.position.x = camX * (1 - BACKDROP.ridgeNear.parallax);
+    ridgeFar.position.x = camX * (1 - course.backdrop.ridgeFar.parallax);
+    ridgeNear.position.x = camX * (1 - course.backdrop.ridgeNear.parallax);
     // mountain is world-fixed: position.x stays 0, no update needed.
   }
 

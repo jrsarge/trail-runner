@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPath } from '../src/trailPath.js';
-import { COURSE, FIRST_LEG_INDEX } from '../src/course.js';
+import { DEFAULT_COURSE } from '../src/courses/index.js';
+
+const COURSE = DEFAULT_COURSE.segments;
+const FIRST_LEG_INDEX = DEFAULT_COURSE.firstLegIndex;
 
 test('1. hand-built 2-point straight path reports known length', () => {
   const path = buildPath([{ type: 'flat', to: { x: 10, y: 0 } }], { x: 0, y: 0 });

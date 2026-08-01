@@ -231,6 +231,30 @@ test/
   trailPath.test.js
 ```
 
+## Open question, to decide after ticket 16: stumbling or stamina?
+
+v2 as specified punishes over-leaning with a **stumble** — a *ceiling*, tested moment to
+moment. An alternative (or addition) is **stamina** — a *budget*, spent across the whole
+race. They solve different problems:
+
+- The stumble asks "can you track the limit as it moves under you?"
+- Stamina asks "where do you spend?" Without it, the optimal line after ticket 12 is simply
+  to sit just under the ceiling for the entire race — there is never a moment you would
+  *choose* to go slower than allowed.
+
+**Having both risks muddling the feedback**: if aggression is punished two different ways,
+the player can't tell which one got them. So this is an either/or to settle once v2 is
+tuned and playable, not something to build speculatively.
+
+If stamina wins, three things change: the runner needs a **minimalist meter** (a budget
+can't be read from a pose the way balance can, though gait and posture should still carry
+part of it), ticket 16's tuning rule becomes *well-paced beats both flat-out and timid*
+rather than *aggressive beats conservative*, and it wants a **longer course** — at ~25 s
+there isn't room for spending decisions to compound. The current course is fine for
+testing, not for shipping stamina on.
+
+Build v2 as specified. Decide after ticket 16, with it in hand.
+
 ## Non-goals for v2
 
 Multiple courses, AI opponents, obstacles, and steeper terrain variants are all wanted

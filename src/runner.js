@@ -12,13 +12,15 @@ function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-export function createRunner(path) {
+export function createRunner(path, palette = {}) {
+  const bodyColor = palette.body ?? COLORS.RUNNER_BODY;
+  const headColor = palette.head ?? COLORS.RUNNER_HEAD;
   const group = new THREE.Group();
   group.position.z = Z.RUNNER;
 
   const body = new THREE.Mesh(
     new THREE.PlaneGeometry(RUNNER.BODY_W, RUNNER.BODY_H),
-    new THREE.MeshBasicMaterial({ color: COLORS.RUNNER_BODY })
+    new THREE.MeshBasicMaterial({ color: bodyColor })
   );
   body.position.set(0, RUNNER.BODY_H / 2, 0); // center y = 0.475, feet at group origin
   group.add(body);
@@ -26,17 +28,26 @@ export function createRunner(path) {
   const headCenterY = RUNNER.BODY_H + RUNNER.HEAD_GAP + RUNNER.HEAD_S / 2; // 1.30
   const head = new THREE.Mesh(
     new THREE.PlaneGeometry(RUNNER.HEAD_S, RUNNER.HEAD_S),
-    new THREE.MeshBasicMaterial({ color: COLORS.RUNNER_HEAD })
+    new THREE.MeshBasicMaterial({ color: headColor })
   );
   head.position.set(0, headCenterY, 0);
   group.add(head);
 
-  const maxTiltRad = (RUNNER.TILT_MAX_DEG * Math.PI) / 180;
-
-  let flip = 1; // animated; eases toward flipTarget, drives scale.x and tilt sign
+  let flip = 1; // animated; eases toward flipTarget, drives scale.x and rotation sign
   let flipTarget = 1; // facing starts at +1
   let hopDy = 0;
   let currentS = 0;
+  // The full composed body angle in degrees, travel frame, + = forward -- set by locomotion
+  // each frame via setLean(). Ticket 11: this was just lean. Tickets 12/13: locomotion now
+  // composes lean + wobble here (normal running), OR the stumble pitch REPLACING lean +
+  // wobble entirely (mid-stumble a runner going down is not also holding a lean/wobble) --
+  // see DESIGN.md "Rendered lean" and locomotion.js. Either way this module just renders
+  // whatever single angle it's handed.
+  let leanDeg = 0;
+
+  function setLean(deg) {
+    leanDeg = deg;
+  }
 
   function setGroundS(s) {
     currentS = s;
@@ -53,25 +64,25 @@ export function createRunner(path) {
       flipTarget = d.x > 0 ? 1 : -1;
     }
 
-    // Tilt to the slope in the travel frame (facing-invariant), not the raw tangent
-    // angle -- see ticket 04 for why a raw angle would stand the runner on its head on
-    // leftward legs. The max(|d.x|, eps) guard keeps this finite inside a fillet, where
-    // d.x passes through ~0 and slope would otherwise blow up.
-    const slope = d.y / Math.max(Math.abs(d.x), 1e-4);
-    const tilt = clamp(Math.atan(slope) * RUNNER.TILT_FACTOR, -maxTiltRad, maxTiltRad);
+    // Player lean REPLACES the v1 terrain-derived tilt (ticket 11) -- idealLean already
+    // encodes the slope (see locomotion.js), so a separate terrain-tilt term here would
+    // double-count it. leanDeg here is locomotion's already-composed body angle: normally
+    // lean + wobble, or the stumble pitch replacing both while going down (ticket 12/13).
+    // Defensively clamped to TILT_MAX_DEG (75 -- see constants.js), which now has to cover
+    // STUMBLE.PITCH_DEG (70) as well as lean + wobble, not just lean alone.
+    const bodyAngleDeg = clamp(leanDeg, -RUNNER.TILT_MAX_DEG, RUNNER.TILT_MAX_DEG);
+    const bodyAngleRad = (bodyAngleDeg * Math.PI) / 180;
     // Composing as T·R·S: mirroring (scale.x = -1) then rotating negates the rotation,
     // so multiplying by flip here cancels that and keeps the lean sign correct on
     // leftward legs. Also means the runner is briefly upright mid-pivot, when flip ~ 0.
     //
-    // The overall sign (-tilt, not +tilt) was picked empirically, not from the raw
-    // formula: a PlaneGeometry-based figure with three.js's rotation.z convention leans
-    // its head toward -sin(rotation.z)*height. Verified in-browser via matrixWorld on
-    // both a rightward leg (leg 3) and a leftward leg (leg 4): with `+tilt * flip` the
-    // head shifts opposite the travel direction on *both* legs (a backward lean); with
-    // `-tilt * flip` it shifts the same direction as travel on both, matching the
-    // ticket's acceptance criterion ("leans in the direction of travel ... not
-    // backward"). See the final report for the measured numbers.
-    group.rotation.z = -tilt * flip;
+    // The overall sign (-bodyAngleRad, not +) carries over unchanged from v1's tilt: a
+    // PlaneGeometry-based figure with three.js's rotation.z convention leans its head
+    // toward -sin(rotation.z)*height, and this sign was verified in-browser via
+    // matrixWorld on both a rightward leg and a leftward leg to lean in the direction of
+    // travel, not backward (see ticket 04 and the ticket 11 report for the leftward-leg
+    // verification specifically).
+    group.rotation.z = -bodyAngleRad * flip;
 
     const appliedFlip = Math.abs(flip) < FLIP_EPSILON
       ? (flip < 0 ? -FLIP_EPSILON : FLIP_EPSILON)
@@ -79,13 +90,8 @@ export function createRunner(path) {
     group.scale.x = appliedFlip;
   }
 
-  function setHopOffset(dy, squash = 0) {
+  function setHopOffset(dy) {
     hopDy = dy;
-    // Squash the body only, vertically, keeping its bottom edge (the feet) pinned at
-    // the group origin -- shift the mesh's center up by half the height it lost.
-    const scaleY = 1 - squash;
-    body.scale.y = scaleY;
-    body.position.y = (RUNNER.BODY_H * scaleY) / 2;
   }
 
   // Ease `flip` toward `flipTarget` at a constant rate that crosses the full [-1, 1]
@@ -105,7 +111,8 @@ export function createRunner(path) {
     flip = 1;
     flipTarget = 1;
     hopDy = 0;
-    setHopOffset(0, 0);
+    leanDeg = 0;
+    setHopOffset(0);
     setGroundS(0);
   }
 
@@ -113,6 +120,7 @@ export function createRunner(path) {
     group,
     setGroundS,
     setHopOffset,
+    setLean,
     update,
     reset,
     get facing() {

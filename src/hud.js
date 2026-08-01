@@ -47,7 +47,7 @@ function gainAt(path, gain, s) {
   return gain[i] + (gain[i + 1] - gain[i]) * t;
 }
 
-export function createHud(container, { race, locomotion, path, onRestart }) {
+export function createHud(container, { race, racer, path, onRestart }) {
   const gain = buildGainTable(path);
   const totalGain = gain[gain.length - 1];
   const totalDistance = path.length;
@@ -90,7 +90,7 @@ export function createHud(container, { race, locomotion, path, onRestart }) {
   const finishStatsEl = finish.querySelector('[data-field="finish-stats"]');
 
   function update() {
-    const s = Math.min(locomotion.s, totalDistance);
+    const s = Math.min(racer.s, totalDistance);
     const g = gainAt(path, gain, s);
 
     const displayTime =

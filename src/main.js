@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { FIXED_DT, MAX_FRAME_DT, COLORS } from './constants.js';
 import { buildPath } from './trailPath.js';
+import { DEFAULT_COURSE } from './courses/index.js';
 import { buildWorld } from './world.js';
-import { createRunner } from './runner.js';
-import { createLocomotion } from './locomotion.js';
+import { createRacer } from './racer.js';
+import { createPlayerController } from './controllers.js';
 import { createCameraRig } from './cameraRig.js';
 import { createDust } from './dust.js';
 import { createRace } from './race.js';
@@ -34,46 +35,58 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const path = buildPath();
-const world = buildWorld(path);
+const course = DEFAULT_COURSE;
+const path = buildPath(course.segments, course.start);
+const world = buildWorld(path, course);
 scene.add(world.group);
-
-const runner = createRunner(path);
-scene.add(runner.group);
 
 const dust = createDust();
 scene.add(dust.group);
 
-const locomotion = createLocomotion(path, runner, (x, y, facing) => dust.emit(x, y, facing));
-const cameraRig = createCameraRig(camera, path);
-const race = createRace(locomotion, runner, cameraRig);
+// v2 ships exactly one racer. Additional racers (AI opponents) would be pushed onto this
+// array with their own controllers; nothing else needs to change.
+const player = createRacer({
+  path,
+  controller: createPlayerController(),
+  isPlayer: true,
+});
+scene.add(player.group);
+
+const racers = [player];
+
+const cameraRig = createCameraRig(camera, path, course);
+const race = createRace(racers, cameraRig);
 
 const hud = createHud(document.getElementById('hud'), {
   race,
-  locomotion,
+  racer: player,
   path,
   onRestart: () => race.requestRestart(),
 });
 
+// Space and pointerdown are start/restart only in v2 -- there is no manual hop to trigger
+// (ticket 10). ArrowLeft/ArrowRight are handled separately, by the player controller, as
+// lean input (ticket 11).
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return;
-  if (event.code === 'Space' || event.code === 'ArrowUp') {
+  if (event.code === 'Space') {
     event.preventDefault();
-    race.requestHop();
+    race.requestStart();
   } else if (event.code === 'KeyR') {
     race.requestRestart();
   }
 });
 
 renderer.domElement.addEventListener('pointerdown', () => {
-  race.requestHop();
+  race.requestStart();
 });
 
 /**
- * Fixed-timestep simulation: race.update() gates locomotion by state (no advance during
- * READY/COUNTDOWN, idle bob during FINISHED), eases the runner's facing/tilt, and drives
+ * Fixed-timestep simulation: race.update() gates racers by state (no advance during
+ * READY/COUNTDOWN, idle bob during FINISHED), eases each runner's facing/lean, and drives
  * the camera rig. Dust is independent of race state -- it only ever animates particles
- * that locomotion's onBigLand callback already emitted.
+ * emitted elsewhere. v2 has not wired up an emitter yet (v1's big-hop landing is gone;
+ * ticket 13 wires continuous gait-landing dust), so the pool sits idle for now.
  */
 function update(dt) {
   race.update(dt);

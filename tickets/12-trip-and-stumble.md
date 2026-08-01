@@ -41,6 +41,21 @@ symmetric threshold; the asymmetry is the design.
 
 ## 4. The stumble
 
+### First: the pose clamp will clip it if you don't handle this
+
+`runner.setLean()` clamps the rendered body angle to `RUNNER.TILT_MAX_DEG` (48°), but
+`STUMBLE.PITCH_DEG` is **70°**. Composed naively, the stumble pose renders clipped at 48
+and the fall reads as a shrug.
+
+Resolve it explicitly: **during a stumble the pitch replaces lean rather than adding to
+it** — a runner going down is not also holding a lean — and the clamp must accommodate the
+pitch. Either raise `TILT_MAX_DEG` to 75 (and update the ticket-16 assert accordingly), or
+give the stumble pose its own clamp. State which you chose in a comment.
+
+Wobble (ticket 13) is zero during a stumble, so it never stacks on top of this.
+
+### The state machine
+
 A state on the racer, blocking normal locomotion:
 
 | Phase | Duration | Behavior |

@@ -1,6 +1,6 @@
-// Landing dust puffs: a fixed-size pool of small quads, recycled, never allocated per
-// frame. Emitted only on big-hop landings (see locomotion.js's onBigLand callback) --
-// emitting on every gait hop would bury the screen in dust. See ticket 08.
+// Dust puffs: a fixed-size pool of small quads, recycled, never allocated per frame. See
+// ticket 08. v1 emitted only on big-hop landings; v2 removed the big hop (ticket 10) and
+// ticket 13 rewires this as continuous gait-landing dust, plus a bigger burst on a stumble.
 
 import * as THREE from 'three';
 import { COLORS, Z, DUST } from './constants.js';
@@ -26,17 +26,19 @@ export function createDust() {
   // full the next emit() naturally recycles the oldest live puff.
   let cursor = 0;
 
-  function emit(x, y, facing) {
+  // count/speed/spread default to the continuous gait-landing puff; racer.js passes the
+  // wider, faster PER_STUMBLE/STUMBLE_SPEED/STUMBLE_SPREAD trio for the stumble burst.
+  function emit(x, y, facing, { count = DUST.PER_GAIT, speed = DUST.SPEED, spread = DUST.SPREAD } = {}) {
     const backward = facing < 0 ? 1 : -1;
-    for (let i = 0; i < DUST.PER_LAND; i++) {
+    for (let i = 0; i < count; i++) {
       const p = pool[cursor];
       cursor = (cursor + 1) % pool.length;
 
       p.x = x;
       p.y = y;
-      p.vx = backward * DUST.SPEED + (Math.random() * 2 - 1) * DUST.SPREAD;
-      // Slightly up: a smaller kick than the backward speed, reusing SPREAD as its scale.
-      p.vy = DUST.SPREAD + Math.random() * DUST.SPREAD;
+      p.vx = backward * speed + (Math.random() * 2 - 1) * spread;
+      // Slightly up: a smaller kick than the backward speed, reusing spread as its scale.
+      p.vy = spread + Math.random() * spread;
       p.age = 0;
       p.active = true;
 

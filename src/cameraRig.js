@@ -2,7 +2,7 @@
 // "Camera" and ticket 06.
 
 import { CAMERA } from './constants.js';
-import { FIRST_LEG_INDEX } from './course.js';
+import { DEFAULT_COURSE } from './courses/index.js';
 
 function smoothstep01(x) {
   const t = Math.max(0, Math.min(1, x));
@@ -13,8 +13,8 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
-export function createCameraRig(camera, path) {
-  const sStackStart = path.segmentStartS(FIRST_LEG_INDEX);
+export function createCameraRig(camera, path, course = DEFAULT_COURSE) {
+  const sStackStart = path.segmentStartS(course.firstLegIndex);
 
   // FOLLOW's own exponentially-eased center; starts at the start-line target so there's
   // no snap-in on the very first frame.

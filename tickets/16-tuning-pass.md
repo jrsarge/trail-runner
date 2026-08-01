@@ -40,9 +40,11 @@ less than it takes to feel like I'm pushing" is useful.
   the parabola's `4`).
 - Remove dead v1 constants: big-hop values, `RUN_SPEED`, `TILT_FACTOR`, the deleted camera
   `STACK_X` / `STACK_Y` / `STACK_MIN_WIDTH`.
-- Keep the startup `console.assert` for switchback clearance; add one asserting
-  `RUNNER.TILT_MAX_DEG >= LEAN.IDEAL_MAX_DEG + MARGIN.BASE_DEG`, which is the saturation
-  trap from ticket 11.
+- Keep the startup `console.assert` for switchback clearance; add one asserting the render
+  clamp can express the largest body angle the game produces — `RUNNER.TILT_MAX_DEG` must
+  cover `LEAN.MAX_FWD_DEG + WOBBLE.MAX_DEG` and, separately, `STUMBLE.PITCH_DEG` (see
+  ticket 12's clamp note). This is the saturation trap from ticket 11: when it bites, the
+  symptom is "the mechanic feels dead" and it points nowhere near the cause.
 - No unused constants.
 
 ## 4. Docs
