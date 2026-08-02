@@ -4,7 +4,7 @@ import { buildPath } from './trailPath.js';
 import { COURSES, DEFAULT_COURSE } from './courses/index.js';
 import { buildWorld } from './world.js';
 import { createRacer } from './racer.js';
-import { createPlayerController } from './controllers.js';
+import { createPlayerController, createAiController } from './controllers.js';
 import { createCameraRig } from './cameraRig.js';
 import { createDust } from './dust.js';
 import { createRace } from './race.js';
@@ -46,8 +46,6 @@ scene.add(world.group);
 const dust = createDust();
 scene.add(dust.group);
 
-// v2 ships exactly one racer. Additional racers (AI opponents) would be pushed onto this
-// array with their own controllers; nothing else needs to change.
 const player = createRacer({
   path,
   controller: createPlayerController(),
@@ -58,12 +56,34 @@ scene.add(player.group);
 
 const racers = [player];
 
+// Ticket 24: rivals are course data (DESIGN.md "Roles are course data, not species") --
+// `course.rivals` is `[{ shape, plan, palette }]`, fixed per course. `shape` is unused until
+// ticket 25 (every rival is still the plain two-square runner, just recoloured). `palette`
+// uses the same string-color-key idiom as `backdrop.*.color` (world.js) -- resolved to hex
+// numbers here, once, rather than teaching runner.js/racer.js about the key indirection.
+for (const rival of course.rivals ?? []) {
+  const rivalPalette = {
+    body: COLORS[rival.palette.body],
+    head: COLORS[rival.palette.head],
+  };
+  const racer = createRacer({
+    path,
+    controller: createAiController({ plan: rival.plan, sustainableOffsetDeg: course.sustainableOffsetDeg }),
+    palette: rivalPalette,
+    isPlayer: false,
+    dust,
+  });
+  scene.add(racer.group);
+  racers.push(racer);
+}
+
 const cameraRig = createCameraRig(camera, path, course);
 const race = createRace(racers, cameraRig);
 
 const hud = createHud(document.getElementById('hud'), {
   race,
   racer: player,
+  racers,
   path,
   course,
   onRestart: () => race.requestRestart(),
@@ -98,9 +118,6 @@ function update(dt) {
   race.update(dt);
   dust.update(dt);
 }
-
-// TEMP DEBUG HARNESS (ticket 22/23 verification only -- removed before this ticket ships).
-window.__debug = { race, player, racers, cameraRig, path, course, renderer, scene, camera, hud };
 
 // Prime the camera before the first render so frame 1 isn't framed by the browser
 // default frustum.

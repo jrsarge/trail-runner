@@ -125,7 +125,9 @@
       .hud-ready {
         position: absolute;
         left: 50%;
-        bottom: 12%;
+        /* Clears the progress strip (ticket 23), which is anchored at bottom: 16px and is
+           ~46px tall. A percentage here collided with it on short viewports. */
+        bottom: 96px;
         transform: translateX(-50%);
         padding: 8px 18px;
         background: rgba(0, 0, 0, 0.45);
@@ -208,6 +210,61 @@
         margin-top: 8px;
         opacity: 0.7;
         font-size: 0.9em;
+      }
+
+      /* Course progress strip (ticket 23). A quiet HUD panel, not a scene overlay -- its own
+         translucent background (matching .hud-stats) keeps it legible over both sky and
+         ground without touching the terrain. The canvas backdrop (elevation silhouette +
+         switchback shading) is drawn once by progressStrip.js and never redrawn; only the
+         marker divs move, via a per-frame style.left write. */
+      .hud-strip {
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        padding: 6px;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 8px;
+      }
+
+      .hud-strip-canvas {
+        display: block;
+        border-radius: 4px;
+      }
+
+      .hud-strip-markers {
+        position: absolute;
+        left: 6px;
+        right: 6px;
+        top: 6px;
+        bottom: 6px;
+      }
+
+      /* Base marker style -- this grey fill is a fallback only; progressStrip.js overrides
+         `background` per rival from its own runner palette (ticket 24), so every rival
+         reads as a distinct colour rather than four identical dots. Size is set from
+         STRIP.MARKER_SIZE/PLAYER_MARKER_SIZE in JS (progressStrip.js), not here --
+         constants.js is the single source of truth for the tuning numbers ticket 23 calls
+         out. */
+      .hud-strip-marker {
+        position: absolute;
+        top: 50%;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(230, 230, 230, 0.85);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+      }
+
+      /* The player marker must be unmistakable, not just a different hue (ticket 23):
+         larger, brighter, and outlined, so it's the one thing on the strip your eye finds
+         first. */
+      .hud-strip-marker.player {
+        background: #fff6cf;
+        border: 1.5px solid #1a1a1a;
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.55),
+          0 0 5px 1px rgba(255, 246, 207, 0.9);
+        z-index: 1;
       }
     </style>
   </head>

@@ -45,6 +45,23 @@ export const alpine = {
   start,
   segments,
 
+  // Ticket 16's measured best-sustained offset above idealLean for this course. See
+  // summit.js's fuller comment -- same role, different course, different number.
+  sustainableOffsetDeg: 15.9,
+
+  // Ticket 24: this course's own shape/plan pairs (DESIGN.md "Roles are course data, not
+  // species"). Deliberately reuses `tortoise`, `hare`, and `fox` from summit.js's roster
+  // with DIFFERENT plans -- the same shape does not mean the same plan on a different
+  // course, which is the point: shape is course data, not a fixed species/behaviour.
+  // tortoise/rabbit is the hardest subversion in the roster (blows up early despite the
+  // plodding stereotype); tortoise/rabbit and hare/overreach both bonk.
+  rivals: [
+    { shape: 'tortoise', plan: 'rabbit', palette: { body: 'RIVAL_5_BODY', head: 'RIVAL_5_HEAD' } },
+    { shape: 'hare', plan: 'overreach', palette: { body: 'RIVAL_6_BODY', head: 'RIVAL_6_HEAD' } },
+    { shape: 'fox', plan: 'metronome', palette: { body: 'RIVAL_7_BODY', head: 'RIVAL_7_HEAD' } },
+    { shape: 'badger', plan: 'surger', palette: { body: 'RIVAL_8_BODY', head: 'RIVAL_8_HEAD' } },
+  ],
+
   // Decorative only (ticket 03). Has no geometric relationship to the course.
   backdrop: {
     // Sawtooth ridgelines, deliberately overlong in x so they never run out of view.

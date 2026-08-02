@@ -96,6 +96,11 @@ export function createLocomotion(path, runner, callbacks = {}) {
   // this specifically -- see DESIGN.md "Telegraphing").
   let slopeSmoothed = 0;
   let slopeSigned = 0;
+  // Ticket 24: hoisted out of update() and exposed via a getter so an AI controller can
+  // read the exact value locomotion itself just used to compute `balance` this frame,
+  // rather than recomputing its own from raw slope (which would disagree -- idealLean is
+  // derived from slopeSmoothed, an exponential low-pass, not the instantaneous slope).
+  let idealLean = 0;
   let speed = 0;
   // `commit` (feeds speed) and `effort` (feeds stamina drain) used to be the same ratio
   // over the same margin; ticket 17 splits them. Hoisted so they're readable between
@@ -156,6 +161,7 @@ export function createLocomotion(path, runner, callbacks = {}) {
     lean = 0;
     slopeSmoothed = 0;
     slopeSigned = 0;
+    idealLean = 0;
     speed = 0;
     hopS0 = 0;
     settling = false;
@@ -195,7 +201,7 @@ export function createLocomotion(path, runner, callbacks = {}) {
     slopeSmoothed += (slopeSigned - slopeSmoothed) * alpha;
     const slopeSmoothedDeg = Math.abs(slopeSmoothed) * DEG_PER_RAD;
 
-    const idealLean = clamp(
+    idealLean = clamp(
       LEAN.SLOPE_TO_IDEAL * Math.abs(slopeSmoothed) * DEG_PER_RAD,
       0,
       LEAN.IDEAL_MAX_DEG
@@ -513,6 +519,12 @@ export function createLocomotion(path, runner, callbacks = {}) {
     },
     get lean() {
       return lean;
+    },
+    // Ticket 24: the idealLean locomotion itself just computed from slopeSmoothed this
+    // frame -- an AI controller reads this rather than recomputing from raw slope, which
+    // would disagree with the value `balance`/`commit`/`effort` above actually used.
+    get idealLean() {
+      return idealLean;
     },
     // Ticket 17: commit (speed's fixed-reference ratio) and effort (the technical-scaled
     // cost ratio ticket 18's drain reads) -- exposed side by side per ticket 17 §2.

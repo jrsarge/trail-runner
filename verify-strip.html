@@ -1,0 +1,144 @@
+<!doctype html>
+<!-- TEMPORARY ticket-24 verification page. Steps the real sim synchronously (no rAF, which
+     the headless browser pane pauses) and renders the real progressStrip at 30% / 70%.
+     Delete after screenshotting. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ticket 24 strip verification</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #4a5f3a;
+        font: 13px/1.5 ui-monospace, Menlo, monospace;
+        color: #eee;
+      }
+      .panel { position: relative; margin: 0 0 28px; }
+      .label { margin: 0 0 8px; font-weight: 700; letter-spacing: 0.04em; }
+      .hud-strip {
+        position: relative;
+        display: inline-block;
+        padding: 6px;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 8px;
+      }
+      .hud-strip-canvas { display: block; border-radius: 4px; }
+      .hud-strip-markers { position: absolute; left: 6px; right: 6px; top: 6px; bottom: 6px; }
+      .hud-strip-marker {
+        position: absolute;
+        top: 50%;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(230, 230, 230, 0.85);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+      }
+      .hud-strip-marker.player {
+        background: #fff6cf;
+        border: 1.5px solid #1a1a1a;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 5px 1px rgba(255, 246, 207, 0.9);
+        z-index: 1;
+      }
+      table { border-collapse: collapse; margin-top: 4px; }
+      td, th { padding: 2px 12px 2px 0; text-align: left; }
+      .sw { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+    </style>
+  </head>
+  <body>
+    <div id="out"></div>
+    <script type="module">
+      import { FIXED_DT, COLORS } from '/src/constants.js';
+      import { buildPath } from '/src/trailPath.js';
+      import { COURSES } from '/src/courses/index.js';
+      import { createRacer } from '/src/racer.js';
+      import { createAiController } from '/src/controllers.js';
+      import { createProgressStrip } from '/src/progressStrip.js';
+
+      const course = COURSES.summit;
+      const path = buildPath(course.segments, course.start);
+
+      const resolve = (p) => ({ body: COLORS[p.body], head: COLORS[p.head] });
+
+      // The player stand-in is a scripted servo holding the course's sustainable offset --
+      // exactly ticket 16's own "best sustained" methodology.
+      const player = createRacer({
+        path,
+        controller: createAiController({ plan: 'metronome', sustainableOffsetDeg: course.sustainableOffsetDeg }),
+        isPlayer: true,
+      });
+      const rivals = course.rivals.map((r) =>
+        createRacer({
+          path,
+          controller: createAiController({ plan: r.plan, sustainableOffsetDeg: course.sustainableOffsetDeg }),
+          palette: resolve(r.palette),
+        })
+      );
+      const racers = [player, ...rivals];
+      const names = ['PLAYER (sustained)', ...course.rivals.map((r) => `${r.shape} / ${r.plan}`)];
+
+      // Synchronous fixed-step sim -- no rAF.
+      const snaps = {};
+      const finish = new Array(racers.length).fill(null);
+      const bonk = new Array(racers.length).fill(null);
+      let t = 0;
+      for (let step = 0; step < 120 * 400; step++) {
+        for (const r of racers) r.update(FIXED_DT, true);
+        t += FIXED_DT;
+        racers.forEach((r, i) => {
+          if (finish[i] === null && r.isFinished) finish[i] = t;
+          if (bonk[i] === null && r.isBonked) bonk[i] = { t, s: r.s };
+        });
+        const p = player.s / path.length;
+        if (!snaps.at30 && p >= 0.3) snaps.at30 = racers.map((r) => r.s);
+        if (!snaps.at70 && p >= 0.7) snaps.at70 = racers.map((r) => r.s);
+        if (racers.every((r) => r.isFinished)) break;
+      }
+
+      const out = document.getElementById('out');
+
+      function panel(title, sList) {
+        const wrap = document.createElement('div');
+        wrap.className = 'panel';
+        const label = document.createElement('p');
+        label.className = 'label';
+        label.textContent = title;
+        wrap.appendChild(label);
+        const host = document.createElement('div');
+        wrap.appendChild(host);
+        out.appendChild(wrap);
+        // Frozen stand-ins: progressStrip only ever reads { s, isPlayer, palette }.
+        const stubs = racers.map((r, i) => ({ s: sList[i], isPlayer: r.isPlayer, palette: r.palette }));
+        createProgressStrip(host, { racers: stubs, path });
+
+        const order = stubs
+          .map((st, i) => ({ i, s: st.s }))
+          .sort((a, b) => b.s - a.s)
+          .map((e, rank) => `${rank + 1}. ${names[e.i]} (${Math.round(e.s)} m)`)
+          .join('   ·   ');
+        const p = document.createElement('div');
+        p.textContent = order;
+        wrap.appendChild(p);
+      }
+
+      panel('~30% of the course — order:', snaps.at30);
+      panel('~70% of the course — order:', snaps.at70);
+
+      const table = document.createElement('table');
+      table.innerHTML =
+        '<tr><th></th><th>racer</th><th>finish</th><th>bonked at</th></tr>' +
+        racers
+          .map((r, i) => {
+            const c = r.isPlayer ? '#fff6cf' : `#${(r.palette.body ?? 0).toString(16).padStart(6, '0')}`;
+            const b = bonk[i] ? `${Math.round(bonk[i].s)} m (${((bonk[i].s / path.length) * 100).toFixed(0)}%, t=${bonk[i].t.toFixed(1)}s)` : '—';
+            return `<tr><td><span class="sw" style="background:${c}"></span></td><td>${names[i]}</td><td>${finish[i] ? finish[i].toFixed(2) + ' s' : '—'}</td><td>${b}</td></tr>`;
+          })
+          .join('');
+      out.appendChild(table);
+
+      const placing = 1 + finish.filter((f, i) => !racers[i].isPlayer && f !== null && f < finish[0]).length;
+      const foot = document.createElement('p');
+      foot.textContent = `player placing: ${placing} of ${racers.length}   ·   course length ${Math.round(path.length)} m   ·   ticket 16 cap: 86.42 s`;
+      out.appendChild(foot);
+    </script>
+  </body>
+</html>

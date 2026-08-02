@@ -2,8 +2,6 @@
 // path, and a controller supplying intent. race.js owns an array of these with one flagged
 // as the player, so adding AI opponents later touches neither this file nor race.js
 // (DESIGN.md "Architecture: racers are instantiable").
-//
-// v2 ships exactly one racer. Do not add an AI controller here.
 
 import { createRunner } from './runner.js';
 import { createLocomotion } from './locomotion.js';
@@ -13,7 +11,7 @@ import { DUST } from './constants.js';
 export function createRacer({
   path,
   controller = createPlayerController(),
-  palette,
+  palette = {},
   isPlayer = false,
   // Optional: the shared dust pool (see main.js). Continuous gait-landing dust and the
   // bigger stumble burst are both driven from locomotion's callbacks (ticket 12/13) --
@@ -36,8 +34,21 @@ export function createRacer({
   });
 
   // Read-only state handed to the controller each tick. Reused rather than reallocated --
-  // this runs at 120 Hz per racer.
-  const view = { s: 0, speed: 0, slope: 0 };
+  // this runs at 120 Hz per racer. Ticket 24 extends this with what plans/the AI servo
+  // need: `progress` (s / path.length, what plans read), `slopeSigned`/`technical` (terrain,
+  // read raw off the path -- same values locomotion itself reads this frame), `lean` (the
+  // servo's error term), and `idealLean` (read straight off locomotion's own getter, NOT
+  // recomputed from raw slope here -- see locomotion.js's idealLean comment for why that
+  // would disagree).
+  const view = {
+    s: 0,
+    progress: 0,
+    speed: 0,
+    slopeSigned: 0,
+    technical: 1,
+    lean: 0,
+    idealLean: 0,
+  };
 
   // Latest controller intent -- ticket 11 turns this into lean via locomotion.
   let input = { lean: 0 };
@@ -49,9 +60,12 @@ export function createRacer({
    */
   function update(dt, advance) {
     view.s = locomotion.s;
+    view.progress = path.length > 0 ? locomotion.s / path.length : 0;
     view.speed = locomotion.speed;
-    const tangent = path.tangentAt(locomotion.s);
-    view.slope = Math.atan2(tangent.y, Math.abs(tangent.x));
+    view.slopeSigned = locomotion.slopeSigned;
+    view.technical = path.technicalAt(locomotion.s);
+    view.lean = locomotion.lean;
+    view.idealLean = locomotion.idealLean;
     input = controller.update(dt, view) ?? input;
 
     // Order matters and matches v1: locomotion places the runner, then the pose update
@@ -66,8 +80,12 @@ export function createRacer({
     controller.reset?.();
     input = { lean: 0 };
     view.s = 0;
+    view.progress = 0;
     view.speed = 0;
-    view.slope = 0;
+    view.slopeSigned = 0;
+    view.technical = 1;
+    view.lean = 0;
+    view.idealLean = 0;
   }
 
   return {
@@ -75,6 +93,11 @@ export function createRacer({
     isPlayer,
     update,
     reset,
+
+    // Ticket 24: read by progressStrip.js to colour each rival's marker from its own
+    // palette (see courses/summit.js `rivals` and main.js's COLORS-key resolution). `{}`
+    // for a racer built with no palette, matching runner.js's own default.
+    palette,
 
     // Read by cameraRig (group.position, hopOffset, facing, s) and hud (s, isFinished).
     get s() {

@@ -19,6 +19,36 @@ export const COLORS = {
   FINISH_DARK: 0x2a2a2a,
   // Landing dust puffs (ticket 08).
   DUST: 0xd8cbb2,
+  // Course progress strip (ticket 23) -- the canvas-drawn elevation silhouette and the
+  // switchback-stack shading over it. Separate from the terrain palette above (GROUND,
+  // RIDGE_NEAR, ...) on purpose: this is a HUD readout, not a scene material, and should be
+  // free to move independently if either gets retuned.
+  STRIP_PROFILE: 0x8a9f6e,
+  STRIP_PROFILE_LINE: 0xc9dba0,
+  STRIP_LEDGE: 0xd98a3d,
+  // Rival runner palettes (ticket 24) -- eight body/head pairs, enough for a 3-4 rival
+  // roster on two courses with none reused within a single course. Referenced by key from
+  // course data (courses/summit.js, courses/alpine.js `rivals[].palette`), the same
+  // string-key idiom `backdrop.*.color` already uses, resolved to hex here by main.js
+  // before a palette ever reaches runner.js. Chosen to stay clear of RUNNER_BODY/RUNNER_HEAD
+  // (the player's orange/skin-tone pair) and of each other, so every racer on the progress
+  // strip (and, later, in the world) reads as a distinct colour.
+  RIVAL_1_BODY: 0x3f8efc,
+  RIVAL_1_HEAD: 0xbfe1ff,
+  RIVAL_2_BODY: 0x8e44ad,
+  RIVAL_2_HEAD: 0xe0c3fc,
+  RIVAL_3_BODY: 0x2ecc71,
+  RIVAL_3_HEAD: 0xc8f7d9,
+  RIVAL_4_BODY: 0xf1c40f,
+  RIVAL_4_HEAD: 0xfff2b0,
+  RIVAL_5_BODY: 0x16a085,
+  RIVAL_5_HEAD: 0xb0f0e6,
+  RIVAL_6_BODY: 0xd63384,
+  RIVAL_6_HEAD: 0xffc2e0,
+  RIVAL_7_BODY: 0x6d4c41,
+  RIVAL_7_HEAD: 0xd7ccc8,
+  RIVAL_8_BODY: 0x546e7a,
+  RIVAL_8_HEAD: 0xcfd8dc,
 };
 
 export const CAMERA = {
@@ -77,10 +107,14 @@ export const WORLD = {
   // hardcoded FLOOR_Y).
   //
   // FLOOR_MARGIN must exceed the camera's worst-case view below the lowest course point.
-  // STACK is the wider shot (ticket 14), so it's the binding case: CAMERA.STACK_HALF_HEIGHT
-  // + CAMERA.LOOKAHEAD_Y (10.5 + 1.2 = 11.7), or sky shows under the ground at the low
-  // point. 12 reproduces alpine's old floorY (-12, since alpine's own
-  // minY is 0) exactly, so this is behavior-neutral for alpine.
+  // STACK is the wider shot (ticket 14), so it's the binding case:
+  //   FLOOR_MARGIN > CAMERA.STACK_HALF_HEIGHT + CAMERA.LOOKAHEAD_Y
+  // or sky shows under the ground at the low point — a bug this project has already fixed
+  // twice (tickets 03 and 19). Ticket 22 widened the camera (STACK_HALF_HEIGHT 10.5 -> 18),
+  // so this went 12 -> 21: 18 + 1.2 = 19.2 required, 21 leaves ~2 of headroom.
+  //
+  // ANY further camera widening must raise this too. Verify at summit's y = -14 low point,
+  // which is the case that actually exercises it.
   FLOOR_MARGIN: 21,
   BED_THICKNESS: 2.2,
   BED_BLEND: 3.0,
@@ -310,7 +344,12 @@ export const RACE = {
 // superseded (see ticket 08's banner). v2 has no big hop; dust now fires on every gait-hop
 // landing, all the time, plus a bigger PER_STUMBLE burst on a stumble.
 export const DUST = {
-  POOL: 40, // was 24 -- gait dust is continuous now, several puffs alive at once
+  // Ticket 24: was 40, sized for one racer. Rivals share this one pool (racer.js passes the
+  // same `dust` instance to every racer, see main.js) -- with up to 5 racers (player + 4
+  // rivals) all emitting continuous gait-landing dust, 40 starves the player's own puffs
+  // almost immediately. Raised 5x to keep per-racer headroom roughly what it was at 1
+  // racer; still a fixed size, never made dynamic (recycled slots, not reallocated).
+  POOL: 200,
   PER_GAIT: 3, // puffs spawned on every gait-hop landing
   PER_STUMBLE: 9, // puffs spawned on a stumble -- a visible eruption
   SIZE: 0.16, // quad width/height
@@ -340,6 +379,64 @@ export const HUD = {
   PACE_SMOOTH_TIME: 0.2,
 };
 export const STORAGE = { BEST_PREFIX: 'trailhop.best.', TAUGHT: 'trailhop.taught' };
+
+// Rivals (ticket 24): the AI servo and the five pacing plans. See src/plans.js and
+// src/controllers.js's createAiController.
+//
+// LEAN_DEADBAND_DEG is 0 on purpose, not a leftover default -- see the long comment in
+// controllers.js. A naive dead-zone would route through locomotion's leanInput===0 decay
+// branch, which decays lean toward 0, NOT toward the servo's target; since targets here are
+// well above 0, that reintroduces exactly the "sags inside its deadband" bug the ticket
+// warns about. Pure bang-bang (sign(target - lean), never 0) never engages that branch, so
+// ripple is bounded by one integration step (LEAN.RATE_DEG * FIXED_DT ~= 0.46 deg) with no
+// systematic bias.
+//
+// Every plan multiplier below is a ratio of the course's own sustainableOffsetDeg (measured
+// per course in ticket 16: summit +21.3, alpine +15.9), never a hardcoded degree value, so a
+// plan authored against one course transfers to the other unchanged.
+export const AI = {
+  LEAN_DEADBAND_DEG: 0,
+  // All-out from the gun. NOTE: LEAN.MAX_FWD_DEG (45) - idealLean caps how much offset can
+  // ever be expressed -- on summit's climbs idealLean tops out well under half of that, so
+  // this multiplier saturates the servo at MAX_FWD_DEG long before the nominal target is
+  // reached, and past ~2.0 the plan is indistinguishable from "hold max lean the whole
+  // course" -- raising it further does nothing (verified with the scratchpad harness, see
+  // ticket 24's report). That ceiling, not this number, sets the earliest reachable bonk:
+  // ~62% summit / ~58% alpine, both bumping the "~50-60%" target from the ticket's table
+  // from above -- the tank (STAMINA.BUDGET_MULT) is what would need to shrink to bonk any
+  // earlier than that, and this ticket does not touch the shared stamina model.
+  RABBIT_MULT: 2.0,
+  // A few degrees above sustainable -- close enough that matching it "almost works." 1.3
+  // lands summit's bonk at ~86% (ticket table: ~85%); alpine bonks somewhat earlier (~77%)
+  // at the same ratio -- expected, not tuned away, since the two courses' terrain/technical
+  // shapes are unrelated and this multiplier is deliberately shared, not course-specific.
+  OVERREACH_MULT: 1.3,
+  // Oscillation period as a fraction of the course (progress, not time -- see plans.js),
+  // and amplitude as a fraction of sustainableOffsetDeg.
+  SURGER_PERIOD_FRAC: 0.14,
+  SURGER_AMPLITUDE_MULT: 0.5,
+  // Conserves below sustainable for the first CLOSER_SPLIT of the course, then spends above
+  // it for the rest. Tuned so neither course bonks -- a controlled, competitive finish a
+  // few seconds behind metronome, not a fourth bonking rival.
+  CLOSER_CONSERVE_MULT: 0.88,
+  CLOSER_SURGE_MULT: 1.08,
+  CLOSER_SPLIT: 0.7,
+};
+
+// Course progress strip (ticket 23): a whole-course elevation silhouette with a marker per
+// racer. Built once at startup from path.points/path.cumulative -- see progressStrip.js --
+// and never rebuilt; only marker positions move per frame. See DESIGN.md "v4 -- Rivals
+// (planned)" for why this ships before rivals (24): a racer list with one entry today,
+// N tomorrow, with no shape change.
+export const STRIP = {
+  WIDTH: 480, // fixed CSS px -- a thin strip, not a responsive one; keeps the once-built canvas simple
+  HEIGHT: 34,
+  MARKER_SIZE: 7,
+  PLAYER_MARKER_SIZE: 10,
+  PAD_TOP: 5, // px reserved above the highest elevation point, so the profile doesn't touch the strip's top edge
+  PAD_BOTTOM: 4, // px reserved below the baseline
+  LEDGE_ALPHA: 0.55, // opacity of the switchback-stack shading over the profile fill
+};
 
 // Switchback mid-leg clearance (DESIGN.md constraint 1): the gait hop's apex, on top of
 // the runner's full height, must stay under the 3.2 m leg spacing or the runner's head

@@ -49,6 +49,28 @@ export const summit = {
   start,
   segments,
 
+  // Ticket 16's measured best-sustained offset above idealLean for this course -- the exact
+  // constant metronome (plans.js) holds for the whole race, and the number every other
+  // rival's plan is derived from (never a hardcoded degree value -- see plans.js/AI in
+  // constants.js). Re-measure with the scratchpad harness (see tickets/24-rivals.md) if
+  // this course's terrain or the shared stamina model ever changes.
+  sustainableOffsetDeg: 21.3,
+
+  // Ticket 24: fixed for this course, per DESIGN.md "Roles are course data, not species" --
+  // `shape` must NOT telegraph `plan` (ticket 25 renders shapes; today every rival is still
+  // the plain two-square runner in its own palette). tortoise/metronome is the one
+  // deliberately-honoured expectation DESIGN.md calls out ("a tortoise winning only lands
+  // because you expected it to plod"); every other pairing here is chosen to subvert, and
+  // alpine.js pairs some of these same shapes with different plans entirely, so the roster
+  // itself demonstrates that shape never fixes plan. fox/rabbit and owl/overreach both bonk
+  // (ticket's "at least one that bonks visibly ahead of the player").
+  rivals: [
+    { shape: 'tortoise', plan: 'metronome', palette: { body: 'RIVAL_1_BODY', head: 'RIVAL_1_HEAD' } },
+    { shape: 'hare', plan: 'closer', palette: { body: 'RIVAL_2_BODY', head: 'RIVAL_2_HEAD' } },
+    { shape: 'fox', plan: 'rabbit', palette: { body: 'RIVAL_3_BODY', head: 'RIVAL_3_HEAD' } },
+    { shape: 'owl', plan: 'overreach', palette: { body: 'RIVAL_4_BODY', head: 'RIVAL_4_HEAD' } },
+  ],
+
   // Decorative only (ticket 03/19 §4). Alpine's backdrop is positioned for x in
   // [-150, 400] with a mountain at x in [76, 132]; this course spans x in [0, 741], so a
   // fresh backdrop is authored here rather than reused. Has no geometric relationship to

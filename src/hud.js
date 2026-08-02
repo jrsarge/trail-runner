@@ -4,6 +4,7 @@
 
 import { RaceState } from './race.js';
 import { HUD, TUTORIAL, STORAGE } from './constants.js';
+import { createProgressStrip } from './progressStrip.js';
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -89,11 +90,16 @@ function gainAt(path, gain, s) {
   return gain[i] + (gain[i + 1] - gain[i]) * t;
 }
 
-export function createHud(container, { race, racer, path, course, onRestart }) {
+export function createHud(container, { race, racer, racers, path, course, onRestart }) {
   const gain = buildGainTable(path);
   const totalGain = gain[gain.length - 1];
   const totalDistance = path.length;
   const courseId = course?.id ?? 'default';
+
+  // Ticket 23: the whole-course progress strip. Takes the full racer list (today: just the
+  // player) -- see progressStrip.js for why. `racers` defaults to [racer] so callers that
+  // haven't been updated (e.g. a stray test harness) still get a working strip.
+  const progressStrip = createProgressStrip(container, { racers: racers ?? [racer], path });
 
   const stats = document.createElement('div');
   stats.className = 'hud-stats';
@@ -173,6 +179,8 @@ export function createHud(container, { race, racer, path, course, onRestart }) {
   function update(dt) {
     const s = Math.min(racer.s, totalDistance);
     const g = gainAt(path, gain, s);
+
+    progressStrip.update();
 
     const displayTime =
       race.state === RaceState.FINISHED
