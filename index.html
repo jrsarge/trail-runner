@@ -59,14 +59,30 @@
         font-variant-numeric: tabular-nums;
       }
 
-      /* Stamina meter (ticket 15 §2b) -- the only UI element in the game. A single thin
-         bar, directly under the stat block, no numbers/percentage/segments. Width is set
-         directly from JS every frame with no CSS transition: stamina only ever decreases,
-         and a transitioned width could visually read as refilling on a restart snap-back
-         (DESIGN.md "The core loop" -- "backing off does not recover it"). */
+      /* Stamina meter (ticket 15 §2b, replaced ticket 16 §3b) -- the only UI element in the
+         game. A single thin bar, directly under the stat block, no numbers/percentage/
+         segments. Width is set directly from JS every frame with no CSS transition:
+         stamina only ever decreases, and a transitioned width could visually read as
+         refilling on a restart snap-back (DESIGN.md "The core loop" -- "backing off does
+         not recover it").
+
+         Ticket 16 §3b (superseding an earlier "recolour the burn band" attempt, then
+         superseding the burn band itself): playtested, the burn band plus an orange
+         warning fill was two competing signals on a 7px strip. Replaced with a plain
+         three-colour tank-level readout -- green/yellow/red, driven by HUD.STAMINA_YELLOW
+         / HUD.STAMINA_RED, hard-switched (no gradient/transition) so the colour never lies
+         about a mid-state. Level and colour are now the ONLY cost feedback (wobble is also
+         gone, §3a) -- see the ticket 16 report for whether that proved sufficient. */
+      .hud-stamina-label {
+        opacity: 0.7;
+        font-size: 0.8em;
+        letter-spacing: 0.04em;
+        margin-top: 8px;
+      }
+
       .hud-stamina {
         position: relative;
-        margin-top: 8px;
+        margin-top: 4px;
         width: 100%;
         height: 7px;
         border-radius: 4px;
@@ -76,23 +92,15 @@
 
       .hud-stamina-fill {
         height: 100%;
-        display: flex;
-        justify-content: flex-end; /* pushes the burn band to the depleting (right) edge */
-        background: rgba(255, 255, 255, 0.85);
+        background: #5ee87a; /* tier-green: above HUD.STAMINA_YELLOW */
       }
 
-      .hud-stamina-fill.warning {
-        background: #ff9a52;
+      .hud-stamina-fill.tier-yellow {
+        background: #ffd23f; /* HUD.STAMINA_RED < fraction <= HUD.STAMINA_YELLOW */
       }
 
-      /* The burn zone: brighter band at the depleting edge, sized to the stamina that
-         would drain over the next HUD.BURN_LOOKAHEAD seconds at the current rate, eased so
-         it reads as a band rather than jitter. This is the only feedback that effort costs
-         anything once the wobble telegraph is gone -- see DESIGN.md "Telegraphing". */
-      .hud-stamina-burn {
-        height: 100%;
-        background: #ffe066;
-        box-shadow: 0 0 6px rgba(255, 224, 102, 0.8);
+      .hud-stamina-fill.tier-red {
+        background: #ff4d4d; /* fraction <= HUD.STAMINA_RED */
       }
 
       .hud-tutorial {

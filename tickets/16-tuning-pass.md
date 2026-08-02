@@ -62,6 +62,60 @@ entire point of `technical`. Either raise the leg values or narrow the margin by
 doesn't move with `idealLean`. Report what you changed and whether the stack finally plays
 as the climax.
 
+## 3a. Remove the wobble
+
+Playtested and rejected as annoying — the same verdict the stumble got, and the same
+pattern: twitchy, high-frequency things happening *to* the character read as irritating,
+while steady things under the player's control (lean, speed, the tank) read as good.
+
+Disable it behind `WOBBLE.ENABLED = false`, exactly as the stumble was retired in ticket 17.
+**Keep the code and the constants** — including the `FULL_EFFORT` ramp fix — so it is a
+one-line restore.
+
+The burn band is also being removed (§3b), so after this ticket the stamina bar's **level and
+colour** are the only cost feedback. See §3b's closing note — if that turns out to be too
+little, report it; do not reinstate the wobble.
+
+## 3b. Replace the burn band with a three-state stamina bar
+
+**Supersedes the earlier "make the burn band contrast" instruction.** Playtested: the burn
+band plus the orange warning fill was two warm colours competing on a 7 px strip, and the
+simpler design below reads better. Do this instead.
+
+**1. Delete the burn band entirely.** Remove the `.hud-stamina-burn` element, its CSS, the
+rate-derivation code in `hud.js` (the `prevStaminaFraction` / `easedBurnFraction` /
+`burnLookahead` block), and the now-unused `HUD.BURN_LOOKAHEAD_FRACTION` and
+`HUD.BURN_EASE_TIME` constants. Keep `HUD.PACE_SMOOTH_TIME`.
+
+**2. Three colour states, driven by tank level alone:**
+
+| tank remaining | colour |
+| --- | --- |
+| above 60% | green |
+| 60% down to 25% | yellow |
+| 25% and below | red |
+
+Thresholds go in constants (`HUD.STAMINA_YELLOW: 0.60`, `HUD.STAMINA_RED: 0.25`) — not
+inlined in CSS — since they are tuning values. Pick colours that stay legible against both
+the light sky and the dark ground the HUD floats over. A hard switch at each threshold is
+fine and probably clearer than a gradient; do not animate the transition.
+
+This replaces the old `.hud-stamina-fill.warning` orange state, which keyed off
+`STAMINA.TIRED_FRACTION` (0.35). Leave `STAMINA.TIRED_FRACTION` itself alone — it drives the
+runner's posture/gait tell (ticket 18 §4), which is a separate signal and should stay at
+0.35.
+
+**3. Add a `Stamina` label** above the bar, styled like the existing `TIME` / `DIST` row
+labels (same size, weight and muted colour) so the block reads as one unit.
+
+### Note the consequence, don't fix it
+
+With the wobble removed (§3a) and the burn band gone, **nothing displays burn *rate* any
+more** — only level. The bar shrinking quickly is still visible, and the colour states tell
+you where you stand, so this is likely fine. But if during play you find you cannot tell
+you are overcooking until the colour flips, **report that as a finding**. Do not reinstate
+the wobble or the band.
+
 ## 4. Housekeeping
 
 - **All tuning numbers in `src/constants.js`**, grouped, each group commented. Grep `src/`

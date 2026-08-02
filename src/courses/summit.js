@@ -32,7 +32,13 @@ const segments = [
   ...flat(cursor, { x: 590, y: 55 }),
   ...climb(cursor, { x: 670, y: 80, samples: 50 }),
   ...descent(cursor, { x: 715, y: 68, samples: 30, technical: 1.25 }),
-  ...switchbacks(cursor, { legs: 5, run: 16, rise: 3.4, technical: 1.6 }),
+  // technical: 2.0, not the alpine-inherited 1.6 -- ticket 16 §3 found 1.6 didn't
+  // meaningfully narrow the ABSOLUTE lean-to-knee here (it landed just above the flat's,
+  // i.e. loose, not tight). 2.0 gives a clear, unambiguous margin below every other section
+  // while keeping the paced-vs-sustained allocation gain close to the original ~1% ceiling
+  // (3.0 was tried and rejected -- it blew that gain out to ~3.7-6%). See alpine.js's fuller
+  // writeup and DESIGN.md "Course".
+  ...switchbacks(cursor, { legs: 5, run: 16, rise: 3.4, technical: 2.0 }),
   ...flat(cursor, { x: 741, y: 85.4 }),
 ];
 

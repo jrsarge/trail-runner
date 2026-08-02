@@ -3,11 +3,14 @@
 A 2D side-view trail running game in three.js. One short race: flat start, up a hill, down
 a hill, up a switchback stack, finish line at the top.
 
-**Status:** v1 (one-button hop) shipped. v2 (lean) is built through ticket 13. **v3 replaces
-the stumble with stamina** (tickets 17–18), adds the terrain-block vocabulary and the long
-`summit` course (19–20), retunes the camera (14), and retunes the tank and the knee around
-sustained **effort level** rather than pacing **allocation** (21, done). 15 (HUD) and 16
-(balance pass) are what's left.
+**Status:** v1 (one-button hop) shipped. v2 (lean) shipped through ticket 13. **v3 is built
+and complete**: it replaces the stumble with stamina (tickets 17–18), adds the terrain-block
+vocabulary and the long `summit` course (19–20), retunes the camera (14), retunes the tank
+and the knee around sustained **effort level** rather than pacing **allocation** (21), builds
+the HUD (15), and closes with the balance pass and doc pass (16) — the wobble telegraph is
+now retired alongside the stumble, the switchback stack's `technical` value was raised so it
+plays as the intended climax, and this document has been brought back in sync with what
+actually shipped.
 
 **Execution order — the numbers no longer imply it:**
 
@@ -144,15 +147,22 @@ floor term) would burn over the whole path, then scale by `STAMINA.BUDGET_MULT` 
 | summit | 826 m | ~365 | ~987 |
 
 Holding a constant lean above ideal for the whole course (real engine, current tuning —
-`MARGIN.BASE_DEG: 20`):
+`MARGIN.BASE_DEG: 20`, switchback `technical: 2.0` as of ticket 16 §3, up from 1.6):
 
 | lean above ideal | alpine finish | alpine spent | summit finish | summit spent |
 | --- | --- | --- | --- | --- |
-| +0° (ride ideal) | 29.2 s | 87.7 | 126.3 s | 381.6 |
-| +10° | 23.3 s | 134.4 | 92.3 s (+15°) | 639.4 |
-| +19.5° (best, alpine) | **20.3 s** | 222.1 | — | — |
-| +23° (best, summit) | — | — | **85.5 s** | 981.6 |
+| +0° (ride ideal) | 29.0 s | 83.5 | 126.1 s | 365.4 |
+| +10° | 23.2 s | 147.7 | 100.8 s | 563.8 |
+| +15.90° (best, alpine) | **20.95 s** | 225.1 | — | — |
+| +21.32° (best, summit) | — | — | **86.42 s** | 986.8 |
 | past best | bonks | 225.4 (empty) | bonks | 987.0 (empty) |
+
+(Ticket 21 shipped this table at +19.5°/20.3 s and +23°/85.5 s, against the original
+switchback `technical: 1.6`. Raising it to 2.0 in ticket 16 §3 tightened the switchback
+stack's cost margin, which lowers the globally-uniform offset a "best sustained" line can
+hold everywhere — including the now-harder stack — without bonking. Both courses are ~1-3%
+slower at their best-sustained line than before; see the ticket 16 report for the full
+before/after comparison.)
 
 The best sustainable uniform line on each course spends nearly the whole tank without
 emptying it before the line; anything harder bonks, anything easier leaves speed on the
@@ -175,10 +185,28 @@ bonk is one number away.
 
 ## Telegraphing
 
-The wobble survives with a **new meaning**: past `WOBBLE.ONSET` of the knee it no longer
-says "you are about to fall," it says "this is costing you." Same curve, same purpose — it
-shows where the line is. Plus a **minimalist stamina meter**, because a budget cannot be
-read from a pose, and a posture/gait tell as the tank empties.
+v3 originally gave the wobble a **new meaning**: past `WOBBLE.ONSET` of the knee it would say
+"this is costing you" instead of "you are about to fall." Built and playtested (ticket 16
+§3a), it got the same verdict as the stumble it descended from — a twitchy, high-frequency
+thing happening *to* the character read as annoying rather than tense. **Retired, not
+deleted**: `WOBBLE.ENABLED = false` in `src/constants.js`, same pattern as
+`STUMBLE.ENABLED`, so it is a one-line restore (including the `FULL_EFFORT` ramp fix, kept
+working for exactly that reason).
+
+What replaced it was a **stamina meter with a burn-rate band** — a bright band at the
+depleting edge sized to the stamina that would drain over the next few seconds at the
+current rate — but playtesting that (ticket 16 §3b) found it competed for attention with the
+bar's own low-tank warning colour on the same 7 px strip. It too is gone. What's left is
+deliberately plain: a **three-colour tank-level readout** (green above
+`HUD.STAMINA_YELLOW`, yellow down to `HUD.STAMINA_RED`, red at or below it, hard-switched,
+no gradient) plus the **posture/gait tell** as the tank empties (a slumping stance and a
+flattened gait apex, driven by `STAMINA.TIRED_FRACTION` — unrelated to the HUD's colour tiers
+and left at 0.35 throughout this ticket). Bar level and colour are the only cost feedback
+left in the game. Ticket 16's playtesting found this sufficient — a hard push toward the
+lower tiers is legible from the bar shrinking and the colour dropping a step — with the
+caveat that **burn *rate*, specifically, is no longer telegraphed**: nothing tells you
+*right now* that a lean is expensive the instant you commit to it, only that the tank is at
+whatever level it's at. See the ticket 16 report for how that read in play.
 
 `TRANSITION` grace is **retired** with the stumble. It existed to prevent unfair trips at
 the switchback folds; with no trips it would only make the folds briefly cheaper and faster,
@@ -190,9 +218,14 @@ which is a perk exactly where the game should be hardest. Slope smoothing stays 
 One body angle, in the **travel frame**, composed before the `* flip` multiply:
 
 ```
-bodyAngleDeg = lean + wobble
+bodyAngleDeg = lean + wobble + slump
 group.rotation.z = -degToRad(bodyAngleDeg) * flip
 ```
+
+`wobble` is currently always 0 (`WOBBLE.ENABLED = false`, ticket 16 §3a) and `slump` is the
+posture/gait tell's small forward lean as the tank empties (ticket 18 §4, `STAMINA.
+TIRED_SLUMP_MAX_DEG`) — both compose the same way, so re-enabling the wobble needs no change
+here.
 
 The leading minus is required: the body extends along local +Y, so a positive `rotation.z`
 tips the head *backward* for a rightward runner. Compose before `* flip` or the lean inverts
@@ -214,7 +247,8 @@ speed free.
 A **racer** is `runner` (mesh + pose) + `locomotion` (s, speed, lean, stamina) +
 `controller` (intent). `race.js` owns an array with one flagged as the player, so AI
 opponents are a later feature rather than a later rewrite. Courses are a registry keyed by
-id. v3 still ships exactly one racer and one course.
+id (`src/courses/index.js`) — v3 ships two, `summit` (the default) and `alpine` — but still
+exactly one racer; AI opponents remain unbuilt.
 
 **The one-tick trap in `race.js`:** `advance` is computed from `stateAtTickStart`, captured
 before the state machine runs, because racers must not advance on the tick COUNTDOWN flips
@@ -230,16 +264,28 @@ Path starts at `(0, 0)`; each segment names its end point.
 | 1 | `flat` | `(20, 0.0)` | start straight | 1.0 |
 | 2 | `smooth` | `(60, 12.0)` | the climb (smoothstep, 24 samples) | 1.0 |
 | 3 | `smooth` | `(95, 4.0)` | the descent (smoothstep, 20 samples) | 1.15 |
-| 4–8 | `leg` | `(113, 7.2)` … `(113, 20.0)` | five switchbacks, alternating | 1.6 |
+| 4–8 | `leg` | `(113, 7.2)` … `(113, 20.0)` | five switchbacks, alternating | 2.0 |
 | 9 | `flat` | `(120, 20.4)` | finish spur | 1.0 |
 
 Length **190.63 m** filleted (196.57 raw). Elevation gain **28.4 m**. Exactly **4** corners
 fillet — the switchback reversals. Stack: x ∈ [95, 113], legs 3.2 m apart.
 
-`technical` makes ground **expensive**, not dangerous. Note from ticket 12's measurements:
-the legs' *margin* narrows correctly (7.2° vs 14°) but `idealLean` is higher there too, so
-absolute lean-to-knee mid-leg is ~15.2°. If the stack should be the hardest terrain, the leg
-values need raising — a ticket 16 item.
+`technical` makes ground **expensive**, not dangerous. Ticket 12's measurements (v2 tuning)
+found it didn't actually bite: the legs' *margin* narrowed correctly but `idealLean` grew
+with slope at nearly the same rate, so the **absolute** lean at which a leg hit the knee came
+out looser than the flat's, not tighter. Re-measured under v3's current tuning
+(`MARGIN.BASE_DEG: 20`) with the original `technical: 1.6`, the problem persisted in a
+milder form — legs settled at an absolute knee of ~18.9°/20.1° (alpine/summit) against the
+flat's 20°, i.e. barely tighter on alpine and actually *looser* on summit, the default
+course. Ticket 16 §3 raised `technical` to **2.0** on both courses' switchback legs: legs
+now settle at an absolute knee of ~16.7° (alpine) / ~18.0° (summit), unambiguously the
+tightest terrain on the course (the climb and descent stay loose — up to ~33°/28° — because
+their difficulty comes from `terrainFactor`, a separate multiplier, not from margin). A
+higher value (3.0) was tried and rejected: it over-tightened the legs enough that pacing
+*allocation* (conserving on the stack, spending elsewhere) jumped from ~1% to ~6% of race
+time, undoing ticket 21's finding that allocation isn't supposed to be the decision (see
+"Measured: pacing is worth ~1%" below). 2.0 keeps the stack the tightest terrain while
+keeping that allocation gain close to its original ~1-2% ceiling.
 
 **Mid-leg hop clearance:** runner height 1.55 + gait apex 0.22 is well under the 3.2 m leg
 spacing. Near-fold overlap is expected and correct — `Z.RUNNER` draws in front of `Z.BED`.
@@ -274,6 +320,16 @@ with the tank sized per course so the best uniform line runs dry near the finish
 A 4.3× longer course roughly doubled the absolute gain but *lowered* it as a fraction of
 race time. **Course length was not the limiting factor.**
 
+Re-checked in ticket 16 §1 against the current engine (a seeded local zone search, not the
+six-zone offline solve above — likely an under-report, the same method found 0.6%/0.3% at
+the original `technical: 1.6` against this offline solve's 1.8%/1.0%) after raising the
+switchback `technical` (§3, 1.6 → 2.0): the gain is still small and still in the same
+ballpark — at least ~2.0% on alpine, ~0.5% on summit — confirming the tighter switchback
+margin didn't quietly turn allocation into the game's real decision. The *comparative* read
+is the reliable part, since it's the same search method throughout: raising `technical` to
+3.0 instead of 2.0 roughly tripled the gain on both courses (to ~6% / ~3.7%) with the exact
+same search — which is why 3.0 was rejected. See the "Course" section above.
+
 Two dial sweeps closing off the obvious fixes:
 
 - **`STAMINA.FLOOR`** (with `MAX` rescaled): lowering it makes the gap *worse* — 2.4 → 0.3
@@ -307,16 +363,84 @@ turns that into a ~40 s decision without adding anything. The surges idea above 
 the table if allocation itself is ever the thing that needs to feel like a decision, but nothing
 in v3 needs it now.
 
-## Non-goals for v3
+## What v3 deliberately does not have
 
-Multiple courses, AI opponents, obstacles. The architecture is shaped for them; none ship.
-Desktop keyboard only — `pointerdown` is start/restart, never gameplay.
-
-**A longer course is the most likely next thing.** At ~25 s there is limited room for
-spending decisions to compound. The current course is fine for testing stamina, not for
-shipping it.
+- **No obstacles, no AI opponents.** The architecture is shaped for them (`race.js`'s racer
+  array, the controller split) — none ship.
+- **Two courses, not more.** `summit` (default) and `alpine` — a longer course than alpine
+  was the ticket 19/20 hypothesis for giving pacing room to compound, and it shipped; a
+  third course is not currently planned.
+- **Desktop keyboard only.** `pointerdown` is start/restart, never gameplay; ← → lean is the
+  entire input surface.
+- **No stumble, no wobble.** Both were built, playtested, and retired as "annoying rather
+  than tense" (tickets 17 and 16 §3a respectively). Both are disabled, not deleted —
+  `STUMBLE.ENABLED` / `WOBBLE.ENABLED` in `src/constants.js` — so restoring either is a
+  one-line change if stamina and the plain stamina-bar colour tiers ever prove insufficient
+  on their own.
 
 ---
+
+---
+
+# v4 — Rivals (planned)
+
+Opponents whose job is to **bait you into overcooking**. Pace-target CPUs only measure you;
+bait rivals weaponise the mistake the whole game is built around, by making it socially
+tempting rather than merely possible.
+
+## Pacing plans
+
+A rival is a **pacing plan**: a function from race state to a target lean offset above
+ideal. Plans read terrain (slope, `technical`), not just progress, so specialists are
+possible — a rival who genuinely beats you up the stack and gives it back on the descent is
+far more interesting than one uniformly faster.
+
+| Plan | Line | Punishes |
+| --- | --- | --- |
+| `rabbit` | all-out from the gun, blows up ~50-60% | chasing early |
+| `overreach` | slightly above sustainable, bonks ~85% | matching them *almost* works |
+| `surger` | repeated accelerate/back-off cycles | responding to every move |
+| `metronome` | the true optimum, never bonks | nothing — the benchmark |
+| `closer` | conserves early, comes past late | your own early overspending |
+
+**Rivals run the identical stamina model. No cheating, and no rubber-banding.** A rival that
+adapts to the player is not demonstrating a mistake, and the teaching effect evaporates.
+Plans are deterministic: a rival blows up in the same place every run, so the course can be
+learned.
+
+## Roles are course data, not species
+
+**The animal does NOT telegraph the plan.** If it did, you would solve the field once and
+every future course would inherit a solved cast. Instead each course assigns its own
+`shape → plan` pairs, fixed for that course:
+
+```js
+summit.rivals = [ { shape: 'tortoise', plan: 'metronome' },
+                  { shape: 'hare', plan: 'closer' }, ... ]
+```
+
+So the field becomes part of **course knowledge** — the same thing the player accumulates
+across attempts, like knowing where the grind starts. The Aesop expectation still does work,
+as the *setup*: a tortoise winning only lands because you expected it to plod.
+
+## Learning is retrospective, not telegraphed
+
+The design deliberately does not warn the player mid-race that they are overspending. The
+player is expected to fail a course several times and close in on it. What that *does*
+require is that failure be legible **afterwards** — hence the post-race stamina graph
+(ticket 26): stamina against **distance** (not time, so runs are comparable), overlaying the
+player's run, their best run, and the winner's, with course sections shaded and the bonk
+point marked. "The tortoise was at 40% here and I was at 10%" is the whole lesson in one
+glance.
+
+## Ticket order
+
+```
+22 (camera) → 23 (progress strip) → 24 (rivals) → 25 (animal shapes) → 26 (graph)
+```
+
+22 is one constant and immediate. 23 de-risks multi-racer work and is useful solo. 24 ships
+rivals as recoloured squares so the mechanic can be played before any art exists.
 
 # History
 
@@ -325,3 +449,15 @@ shipping it.
 - **v2** — lean replaces the hop; speed varies with commit. Tickets 09–13 built the racer
   split, variable speed, lean control, trip/stumble, and the wobble. The stumble is retired
   in v3; everything else stands.
+- **v3** — stamina replaces the stumble as the cost of over-leaning (17–18); the
+  terrain-block vocabulary and the long `summit` course give pacing room to matter (19–20);
+  the camera retunes for a bigger, more readable character (14); the tank and knee retune
+  around sustained *effort level* rather than pacing *allocation*, the retargeted decision
+  the whole mechanic is built around (21); the HUD ships — stat block, best times, tutorial,
+  stamina bar (15). Ticket 16 closes it out: the wobble telegraph, built and playtested
+  twice (once at knee-normalized amplitude, once re-ramped over a wider effort range), is
+  retired for the same reason the stumble was — annoying, not tense; the burn-rate band that
+  replaced it is *also* retired, for competing with the bar's own low-tank colour on a 7px
+  strip; what ships instead is a plain three-colour tank-level readout. The switchback
+  stack's `technical` value is raised (1.6 → 2.0) so it finally reads as the hardest terrain
+  on the course, not just the steepest-looking one.

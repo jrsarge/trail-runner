@@ -22,7 +22,7 @@ export const COLORS = {
 };
 
 export const CAMERA = {
-  HALF_HEIGHT: 7.0, // was 9 -- lean needs a readable character (ticket 14)
+  HALF_HEIGHT: 12.0, // CANDIDATE B for ticket 22 (was 7.0, ticket 14) -- widened so terrain reads
   // v3 (ticket 14): lookahead scales with speed rather than being a flat constant, since
   // pace now varies from a bonked crawl to a full sprint -- see cameraRig.js.
   LOOKAHEAD_BASE: 3.0,
@@ -35,7 +35,7 @@ export const CAMERA = {
   // STACK_MIN_WIDTH containment constants (tuned to alpine's switchback stack geometry)
   // are gone -- they cannot work for a second course with a stack at different coordinates
   // (see DESIGN.md "Camera").
-  STACK_HALF_HEIGHT: 10.5, // moderate pull-back; still follows the runner
+  STACK_HALF_HEIGHT: 18.0, // moderate pull-back; still follows the runner (scaled with HALF_HEIGHT, ticket 22)
   STACK_LEAD: 6,
   STACK_BLEND: 1.2,
   // Stumble shake (ticket 14 §3). Gated behind STUMBLE.ENABLED in cameraRig.js -- retired
@@ -81,7 +81,7 @@ export const WORLD = {
   // + CAMERA.LOOKAHEAD_Y (10.5 + 1.2 = 11.7), or sky shows under the ground at the low
   // point. 12 reproduces alpine's old floorY (-12, since alpine's own
   // minY is 0) exactly, so this is behavior-neutral for alpine.
-  FLOOR_MARGIN: 12,
+  FLOOR_MARGIN: 21,
   BED_THICKNESS: 2.2,
   BED_BLEND: 3.0,
   TRAIL_WIDTH: 0.36,
@@ -147,6 +147,10 @@ export const SPEED = {
   SPRINT_GAIN: 0.8,
   SPRINT_FALLOFF: 1.0,
   MAX: 11.5, // hard cap; an uncapped sprint is unreadable
+  // Ticket 16 §4: hoisted out of locomotion.js's `commit` clamp. Lower end of `commit`'s
+  // domain -- leaning back can't drag it below this, so backing off can't go arbitrarily
+  // slow. Upper end is deliberately uncapped (ticket 17 §3, sprinting).
+  MIN_COMMIT: -1,
 };
 
 // Player lean, in degrees, signed in the travel frame (+ = forward). See DESIGN.md "The
@@ -264,7 +268,24 @@ export const STAMINA = {
 // the culprit. Normalizing over [ONSET, FULL_EFFORT] instead spreads it across the range
 // actually played: sustainable (1.13) reads ~0.7 deg -- just perceptible -- and all-out
 // (~1.8-2.25 depending on grade) reads 2.4-3.5 deg -- unmistakable.
-export const WOBBLE = { ONSET: 0.55, FULL_EFFORT: 2.2, MAX_DEG: 3.5, FREQ_HZ: 14 };
+// v3 (ticket 16 §3a): playtested and rejected -- same verdict, same reason as the stumble
+// (ticket 17): a twitchy, high-frequency thing happening *to* the character read as
+// annoying, not tense. RETIRED, NOT DELETED, exactly like STUMBLE.ENABLED above -- flip
+// ENABLED back to true to restore, including the FULL_EFFORT ramp fix, with no other code
+// changes. Ticket 16 §3b also removes the burn-rate band, so after this ticket the stamina
+// bar's LEVEL and three-colour TIER (see HUD.STAMINA_YELLOW/STAMINA_RED below) are the only
+// cost feedback left -- see the ticket 16 report for whether that reads as sufficient in
+// play with the wobble off.
+export const WOBBLE = {
+  ENABLED: false,
+  ONSET: 0.55,
+  FULL_EFFORT: 2.2,
+  MAX_DEG: 3.5,
+  FREQ_HZ: 14,
+  // Ticket 16 §4: hoisted out of locomotion.js -- the ease-in exponent shaping how sharply
+  // amplitude ramps up between ONSET and FULL_EFFORT (amp = MAX_DEG * wobbleT ** RAMP_POWER).
+  RAMP_POWER: 1.5,
+};
 
 export const HOP = {
   GAIT_DIST: 1.6,
@@ -302,20 +323,20 @@ export const DUST = {
   STUMBLE_SPREAD: 1.1, // random velocity jitter (stumble burst) -- wider
 };
 
-// HUD (ticket 15): the lean tutorial on the flat start, the stamina bar's burn-rate zone,
-// pace smoothing, and the localStorage keys for best times / the tutorial-taught flag. See
-// DESIGN.md "Telegraphing" (the burn zone replaces the wobble's soon-to-be-retired job of
-// saying "this is costing you") and tickets/15-best-times-and-hud.md.
+// HUD (ticket 15): the lean tutorial on the flat start, the stamina bar's tank-level colour
+// tiers, pace smoothing, and the localStorage keys for best times / the tutorial-taught
+// flag. See tickets/15-best-times-and-hud.md and ticket 16 §3b.
 export const TUTORIAL = { DISTANCE: 18, SATISFIED_TIME: 0.6 };
-// The burn zone's lookahead is a fraction of the course's own expected duration, NOT a
-// fixed number of seconds. A fixed 5 s was measured at 44-48% of the bar at max lean on
-// alpine but only 7% on summit, whose tank is ~4.4x larger -- the same effort read as
-// alarming on one course and nearly invisible on the other. Scaling by
-// (path.length / SPEED.BASE) makes the band mean "the next ~19% of the race" on any course,
-// which is what keeps it legible. 0.19 reproduces alpine's original ~5 s exactly.
+// v3 (ticket 16 §3b): replaces the earlier burn-rate band (BURN_LOOKAHEAD_FRACTION,
+// BURN_EASE_TIME -- deleted, along with the .hud-stamina-burn element and its hud.js
+// derivation code) with a plain three-colour tank-LEVEL readout: green above
+// STAMINA_YELLOW, yellow down to STAMINA_RED, red at or below it. Hard switches, no
+// animated transition -- see index.html's .hud-stamina-fill rules. This also replaces the
+// old .warning class, which keyed off STAMINA.TIRED_FRACTION (0.35); that constant is left
+// alone since it still drives the runner's separate posture/gait tell (ticket 18 §4).
 export const HUD = {
-  BURN_LOOKAHEAD_FRACTION: 0.19,
-  BURN_EASE_TIME: 0.2,
+  STAMINA_YELLOW: 0.6,
+  STAMINA_RED: 0.25,
   PACE_SMOOTH_TIME: 0.2,
 };
 export const STORAGE = { BEST_PREFIX: 'trailhop.best.', TAUGHT: 'trailhop.taught' };
@@ -336,4 +357,18 @@ console.assert(
   Math.abs(RUNNER.HEIGHT - (RUNNER.BODY_H + RUNNER.HEAD_GAP + RUNNER.HEAD_S)) < 1e-9,
   `RUNNER.HEIGHT (${RUNNER.HEIGHT}) is out of sync with BODY_H + HEAD_GAP + HEAD_S ` +
     `(${RUNNER.BODY_H + RUNNER.HEAD_GAP + RUNNER.HEAD_S}).`
+);
+
+// Ticket 16 §4 (the saturation trap from ticket 11): runner.js clamps the rendered body
+// angle to RUNNER.TILT_MAX_DEG. In normal running (wobble on) that angle is
+// LEAN.MAX_FWD_DEG + WOBBLE.MAX_DEG; if TILT_MAX_DEG ever fell under that, extra lean would
+// stop visibly registering while the underlying mechanic (and stamina drain) kept working
+// exactly as before -- the symptom is "the mechanic feels dead," and it points nowhere near
+// this clamp as the cause. Checked even with WOBBLE.ENABLED false (see constants.js above)
+// so a wobble restore can't silently reintroduce the saturation.
+console.assert(
+  RUNNER.TILT_MAX_DEG >= LEAN.MAX_FWD_DEG + WOBBLE.MAX_DEG,
+  `RUNNER.TILT_MAX_DEG (${RUNNER.TILT_MAX_DEG}) must cover LEAN.MAX_FWD_DEG + WOBBLE.MAX_DEG ` +
+    `(${LEAN.MAX_FWD_DEG + WOBBLE.MAX_DEG}) or extra lean stops visibly registering ` +
+    '(see DESIGN.md "Rendered lean" and ticket 16 §4).'
 );

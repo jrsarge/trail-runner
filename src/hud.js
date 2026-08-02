@@ -3,7 +3,7 @@
 // the stat block's pace/best rows, the stamina bar, and the tutorial are ticket 15.
 
 import { RaceState } from './race.js';
-import { STAMINA, HUD, TUTORIAL, STORAGE, SPEED } from './constants.js';
+import { HUD, TUTORIAL, STORAGE } from './constants.js';
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -103,10 +103,9 @@ export function createHud(container, { race, racer, path, course, onRestart }) {
     <div class="hud-row"><span class="hud-label">ELEV</span><span class="hud-value" data-field="elev"></span></div>
     <div class="hud-row"><span class="hud-label">PACE</span><span class="hud-value" data-field="pace"></span></div>
     <div class="hud-row"><span class="hud-label">BEST</span><span class="hud-value" data-field="best"></span></div>
+    <div class="hud-stamina-label">Stamina</div>
     <div class="hud-stamina" data-field="stamina-track">
-      <div class="hud-stamina-fill" data-field="stamina-fill">
-        <div class="hud-stamina-burn" data-field="stamina-burn"></div>
-      </div>
+      <div class="hud-stamina-fill" data-field="stamina-fill"></div>
     </div>
   `;
   container.appendChild(stats);
@@ -116,7 +115,6 @@ export function createHud(container, { race, racer, path, course, onRestart }) {
   const paceEl = stats.querySelector('[data-field="pace"]');
   const bestEl = stats.querySelector('[data-field="best"]');
   const staminaFillEl = stats.querySelector('[data-field="stamina-fill"]');
-  const staminaBurnEl = stats.querySelector('[data-field="stamina-burn"]');
 
   const ready = document.createElement('div');
   ready.className = 'hud-ready';
@@ -166,20 +164,6 @@ export function createHud(container, { race, racer, path, course, onRestart }) {
   // --- pace smoothing (ticket 15 §2, HUD.PACE_SMOOTH_TIME) ---
   let smoothedSpeed = 0;
 
-  // --- stamina burn zone (ticket 15 §2b, THE headline of this ticket) ---
-  // The bar only ever shrinks, so the "rate" isn't stored anywhere in locomotion -- it's
-  // derived here, frame to frame, from staminaFraction alone: how much fraction was lost
-  // since the last HUD update, projected `burnLookahead` seconds ahead at that rate, then
-  // eased over HUD.BURN_EASE_TIME so it reads as a band, not per-frame jitter. Negative
-  // deltas (stamina rising, e.g. a restart snapping it back to full) are clamped to zero --
-  // there is no such thing as a negative burn rate.
-  let prevStaminaFraction = racer.staminaFraction;
-  let easedBurnFraction = 0;
-  // Scaled to the course's own expected duration rather than a fixed number of seconds --
-  // a fixed 5 s read as 44-48% of the bar at max lean on alpine but only 7% on summit,
-  // whose tank is ~4.4x larger. See the HUD comment in constants.js.
-  const burnLookahead = (path.length / SPEED.BASE) * HUD.BURN_LOOKAHEAD_FRACTION;
-
   // --- tutorial (ticket 15 §3) ---
   let leanHeldTime = 0;
   let tutorialSatisfied = false;
@@ -207,25 +191,16 @@ export function createHud(container, { race, racer, path, course, onRestart }) {
 
     bestEl.textContent = bestMs != null ? formatTime(bestMs / 1000) : '—';
 
-    // --- stamina bar (ticket 15 §2b) ---
+    // --- stamina bar (ticket 15 §2b, replaced ticket 16 §3b) ---
+    // Width is set directly every frame (no CSS transition on the fill) -- stamina only
+    // ever decreases, so a transitioned width could visually suggest it refills on a
+    // restart snap-back. Colour is a hard-switched three-tier readout of tank LEVEL alone
+    // (HUD.STAMINA_YELLOW / HUD.STAMINA_RED) -- the burn-rate band this used to carry is
+    // gone (ticket 16 §3b); level + colour are now the only cost feedback in the HUD.
     const fraction = clamp01(racer.staminaFraction);
-    if (dt > 1e-4) {
-      const fractionDrop = Math.max(0, prevStaminaFraction - fraction);
-      const instRate = fractionDrop / dt; // fraction of the tank per second
-      const targetBurn = clamp(instRate * burnLookahead, 0, fraction);
-      const burnAlpha = 1 - Math.exp(-dt / HUD.BURN_EASE_TIME);
-      easedBurnFraction += (targetBurn - easedBurnFraction) * burnAlpha;
-    }
-    easedBurnFraction = clamp(easedBurnFraction, 0, fraction);
-    prevStaminaFraction = fraction;
-
-    // Width/left are set directly every frame (no CSS transition on the fill) -- stamina
-    // only ever decreases, so an eased/transitioned width could visually suggest it refills
-    // on a restart snap-back. The burn band's own smoothing is done above, in JS, against
-    // the rate, not against its own rendered width.
     staminaFillEl.style.width = `${fraction * 100}%`;
-    staminaFillEl.classList.toggle('warning', fraction < STAMINA.TIRED_FRACTION);
-    staminaBurnEl.style.width = `${(fraction > 0 ? easedBurnFraction / fraction : 0) * 100}%`;
+    staminaFillEl.classList.toggle('tier-yellow', fraction <= HUD.STAMINA_YELLOW && fraction > HUD.STAMINA_RED);
+    staminaFillEl.classList.toggle('tier-red', fraction <= HUD.STAMINA_RED);
 
     ready.style.display = race.state === RaceState.READY ? 'block' : 'none';
 

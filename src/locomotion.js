@@ -268,21 +268,24 @@ export function createLocomotion(path, runner, callbacks = {}) {
 
     // SPEED: fixed reference, never scaled by technical or grace (ticket 17 §2 -- the trap
     // this ticket exists to avoid). Upper end is uncapped (ticket 17 §3, sprinting); lower
-    // end stays clamped at -1 so leaning back can't go arbitrarily slow.
-    commit = Math.max(-1, balance / SPEED.REF_DEG);
+    // end stays clamped at SPEED.MIN_COMMIT so leaning back can't go arbitrarily slow.
+    commit = Math.max(SPEED.MIN_COMMIT, balance / SPEED.REF_DEG);
 
     // COST: technical-scaled margin, no grace. Ticket 18 turns this into stamina drain.
     effort = balance / costMargin;
 
-    // --- wobble telegraph -- repurposed (ticket 17 §4) ---
+    // --- wobble telegraph -- repurposed (ticket 17 §4), retired (ticket 16 §3a) ---
     // Used to track "how close to whichever edge is live" (forward trip margin or backward
-    // slip margin). With no edges left to trip on, it now tracks `effort`, the cost knee:
-    // past WOBBLE.ONSET of the knee it means "this is costing you," not "you're about to
-    // fall." Same ** 1.5 curve, same onset, same zero-during-stumble rule (moot while
-    // disabled).
+    // slip margin). With no edges left to trip on, it tracked `effort`, the cost knee: past
+    // WOBBLE.ONSET of the knee it meant "this is costing you," not "you're about to fall."
+    // Gated behind WOBBLE.ENABLED, exactly like STUMBLE.ENABLED above -- playtested and
+    // rejected as annoying (DESIGN.md "Telegraphing", ticket 16 §3a). The HUD's stamina bar
+    // (level + three-colour tier, ticket 16 §3b) is the only cost feedback left -- no burn
+    // rate signal survives either. Kept computing wobbleDeg = 0 in the disabled branch
+    // rather than skipping the block so bodyAngleDeg below never needs its own gate.
     const stumbling = STUMBLE.ENABLED && stumblePhase !== null;
-    if (stumbling) {
-      wobbleDeg = 0; // "Wobble is zero during a stumble" (DESIGN.md "Telegraphing")
+    if (!WOBBLE.ENABLED || stumbling) {
+      wobbleDeg = 0; // "Wobble is zero during a stumble" (DESIGN.md "Telegraphing"), or off.
     } else {
       // Normalized over [ONSET, FULL_EFFORT], NOT [ONSET, 1]. Sustainable effort sits just
       // past the knee (ticket 21), so normalizing to the knee would peg this at full
@@ -292,7 +295,7 @@ export function createLocomotion(path, runner, callbacks = {}) {
         0,
         1
       );
-      const amp = WOBBLE.MAX_DEG * Math.pow(wobbleT, 1.5);
+      const amp = WOBBLE.MAX_DEG * Math.pow(wobbleT, WOBBLE.RAMP_POWER);
       wobbleClock += dt;
       wobbleDeg = amp * Math.sin(wobbleClock * WOBBLE.FREQ_HZ * TAU);
     }

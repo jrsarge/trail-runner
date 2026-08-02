@@ -99,6 +99,9 @@ function update(dt) {
   dust.update(dt);
 }
 
+// TEMP DEBUG HARNESS (ticket 22/23 verification only -- removed before this ticket ships).
+window.__debug = { race, player, racers, cameraRig, path, course, renderer, scene, camera, hud };
+
 // Prime the camera before the first render so frame 1 isn't framed by the browser
 // default frustum.
 race.update(0);
